@@ -1,0 +1,17 @@
+; AIGuide 仓库自带的最小 Godot 工程：只用来编译、调试 addons/ai_guide。
+; 游戏项目通过 Verso 依赖只安装 Godot/addons/ai_guide，不会用到这个文件。
+
+config_version=5
+
+[application]
+
+config/name="AIGuide.Godot (dev)"
+config/features=PackedStringArray("4.8", "C#")
+
+[dotnet]
+
+project/assembly_name="AIGuide.Godot"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/ai_guide/plugin.cfg")

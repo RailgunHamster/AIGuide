@@ -1,0 +1,34 @@
+--- a/scene/main/viewport.cpp	2026-11-04 07:24:08.972371423 +0000
++++ b/scene/main/viewport.cpp	2026-11-04 07:24:08.980371424 +0000
+@@ -3295,6 +3295,31 @@
+ 		// Native Window: Use DisplayServer logic for calculating mouse position.
+ 		Window *receiving_window = get_tree()->get_root()->gui.windowmanager_window_over;
+ 		if (!receiving_window) {
++			// [AI Guide patch] Synthesized mouse events update hover state.
++			//
++			// `windowmanager_window_over` is only set by the OS (WINDOW_EVENT_MOUSE_ENTER/EXIT), so it is null
++			// whenever the real OS cursor is outside every Godot window. Previously such mouse events were
++			// ignored for hover purposes. That is correct for real hardware input, but it breaks UI automation
++			// and tests that synthesize input via `Input.parse_input_event()` or `Window.push_input()`:
++			// BaseButton only accepts a mouse press while it is hovered (see BaseButton::on_action_event()),
++			// so synthesized clicks on buttons silently did nothing unless the real cursor happened to be
++			// over the same window.
++			//
++			// While the OS cursor is outside all Godot windows, a mouse event that targets this window can only
++			// be synthesized (or come from a mouse capture, where leaving the viewport is the correct result
++			// anyway). Let it update hover for the window it was delivered to.
++			//
++			// Kept unchanged on purpose:
++			// - DEVICE_ID_INTERNAL events (passive re-hover from update_mouse_cursor_state() and physics
++			//   picking) still return early, so they cannot clear a hover state set by synthesized input.
++			// - When the OS cursor is over some Godot window, the original logic below still applies and the
++			//   real cursor position wins.
++			if (p_mm->get_device() != InputEvent::DEVICE_ID_INTERNAL) {
++				Window *this_window = Object::cast_to<Window>(this);
++				if (this_window && this_window->get_window_id() == p_mm->get_window_id()) {
++					this_window->_update_mouse_over(p_mm->get_position());
++				}
++			}
+ 			return;
+ 		}
+ 		if (receiving_window->get_window_id() != p_mm->get_window_id()) {

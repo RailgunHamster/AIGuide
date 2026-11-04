@@ -1,0 +1,8 @@
+<Project Sdk="Godot.NET.Sdk/4.8.0-beta">
+  <!-- 仓库自带的开发工程：编译 addons/ai_guide 用。游戏项目里插件随游戏自己的 .csproj 一起编译。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>AIGuide</RootNamespace>
+  </PropertyGroup>
+</Project>

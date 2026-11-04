@@ -1,0 +1,9 @@
+# Godot
+.godot/
+# .NET
+bin/
+obj/
+.vs/
+*.user
+# 本地工具
+.ai_guide_bridge/
