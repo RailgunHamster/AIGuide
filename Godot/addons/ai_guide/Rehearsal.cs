@@ -26,7 +26,6 @@ namespace AIGuide;
 public sealed class Rehearsal
 {
     public const string RecipeDir = "res://.ai_guide/recipes";
-    private static readonly HashSet<string> SkipDirs = new() { ".godot", ".ai_guide_bridge", ".ai_guide", ".git", ".verso", ".betterlore", ".lore", ".svn" };
 
     private readonly UiTree _ui;
     private readonly UiInput _input;
@@ -157,7 +156,8 @@ public sealed class Rehearsal
     {
         foreach (var d in DirAccess.GetDirectoriesAt(dir))
         {
-            if (SkipDirs.Contains(d))
+            // 以 . 开头的目录（.godot 缓存、版本管理工具的数据目录、本插件的 .ai_guide 等）Godot 本身也不导入，不追踪
+            if (d.StartsWith("."))
                 continue;
             var sub = dir.PathJoin(d);
             outD[sub + "/"] = 0;

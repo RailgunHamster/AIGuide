@@ -16,13 +16,10 @@
 
 ## 在游戏项目里使用（以 Godot 为例）
 
-用 Verso 的「项目依赖」把插件装进游戏：
-- Git 来源：`https://github.com/RailgunHamster/AIGuide.git`
-- 源目录：`Godot/addons/ai_guide`，项目内目录：`addons/ai_guide`
-- 更新目标：发布的版本标签（如 `godot-v0.2.0`）
+插件就是 `Godot/addons/ai_guide` 这一个目录，放进游戏项目的 `addons/ai_guide` 即可：直接拷贝，或者用你习惯的依赖管理方式引用本仓库的这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
 
 详见 [Godot/README.md](Godot/README.md)。
 
 ## 仓库约定
-- 不放游戏文件、令牌、`.godot/`、`.verso/`。
+- 不放游戏文件、令牌和编辑器缓存（`.godot/` 等）。
 - 引擎改动以补丁形式放在各引擎目录的 `patches/` 下，插件在未打补丁的官方引擎上也能工作（有降级行为，见各自 README）。

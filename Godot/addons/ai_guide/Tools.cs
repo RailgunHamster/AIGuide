@@ -14,7 +14,7 @@ namespace AIGuide;
 [Tool]
 public partial class Tools : Node
 {
-    public const string Version = "0.2.0";
+    public const string Version = "0.2.1";
     private static readonly string[] Protocols = { "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05" };
     private const int ToolTimeoutMs = 15000;
 

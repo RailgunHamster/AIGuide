@@ -10,7 +10,7 @@
 - 所有代码都包在 `#if TOOLS` 里，只在编辑器里编译，不进入导出的游戏。
 
 ## 安装
-1. 用 Verso「项目依赖」添加：Git 来源 `https://github.com/RailgunHamster/AIGuide.git`，源目录 `Godot/addons/ai_guide`，项目内目录 `addons/ai_guide`，更新目标选发布的标签。（不用 Verso 时直接把 `Godot/addons/ai_guide` 拷进项目的 `addons/` 也行。）
+1. 把本仓库的 `Godot/addons/ai_guide` 放进游戏项目的 `addons/ai_guide`：直接拷贝，或用任意依赖管理方式引用这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
 2. 编译一次 C# 工程（编辑器右上角的“构建”，或 `dotnet build`）。
 3. 项目设置 → 插件 → 启用 **AI Guide**。输出面板显示 `MCP 服务已启动：http://127.0.0.1:7650/mcp`。
    - 端口：编辑器设置 `ai_guide/server/port`，或环境变量 `GODOT_AI_GUIDE_PORT`。
@@ -63,7 +63,7 @@
 
 ## 开发
 - 本目录本身是一个最小 Godot C# 工程（`project.godot` + `AIGuide.Godot.csproj`），用来编译和调试插件：`dotnet build AIGuide.Godot.csproj`。
-- 在游戏里调试：Verso「项目依赖 → 开发副本…」选本仓库，把插件源码应用到游戏；改完 `.cs` 后调用 `ai_guide_reload`（或在编辑器里点“构建”）。
+- 在游戏里调试：把游戏的 `addons/ai_guide` 指向本仓库的工作副本（链接或同步），改完 `.cs` 后调用 `ai_guide_reload`（或在编辑器里点“构建”）。
 - C# 程序集重新加载时，Godot 会保留插件对象、替换代码：插件实现了 `ISerializationListener`，在 `OnBeforeSerialize` 里拆掉全部运行时对象（MCP 服务、覆盖层、菜单），`OnAfterDeserialize` 再按新代码重建。
 - 正在执行的工具请求会在重新加载时被丢弃，HTTP 服务端与文件桥都有 30 秒兜底，超时会返回错误。
 
