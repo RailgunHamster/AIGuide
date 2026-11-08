@@ -10,6 +10,8 @@ AI Guide 让本地 AI 读取编辑器界面、操作控件、标出按钮，并�
 
 关闭目标项目的编辑器，在 AIGuide Git 仓库执行 `Sbox/Install.ps1 -Project <项目目录>`，再用对应 s&box 引擎打开项目。C# 随项目编译；原生适配层是 `Editor/AIGuide/Native/aiguide_qt5.dll`。不用重新编译引擎。
 
+1.1 安装器提供 `-Action Check` 和 `-DryRun`（只检查，不修改项目），以及 `-Action Verify -Engine <引擎game目录>`（实际检查编译、Qt 适配层和 MCP）。安装时附加 `-Verify -Engine ...`，验证失败会恢复部署、忽略规则和安装记录。更新前对照安装摘要检查本地改动，不再通过备份后强行覆盖定制代码。支持目标目录中唯一的 `.sbproj` 或任意名称的 `*.sbproj`；安装器不切换源码 Git 版本。
+
 进入 `编辑器顶部 AI Guide → 教程与状态` 可查看 MCP 地址、启动已保存教程、停止引导。另有“复制 MCP 地址”和“停止引导”菜单。
 
 默认本地地址为 `http://127.0.0.1:7660/mcp`。本机可创建 `.ai_guide/config.json`：
@@ -41,6 +43,8 @@ $cli = 'C:/path/to/sbox/bin/managed/sbox-cli.exe'
 ```
 
 `aiguide_tools` 返回完整 17 项工具的 JSON Schema；`aiguide_call` 包装其中任意一项。原生模态窗口阻塞引擎主循环时，优先使用下面的独立 HTTP 入口。
+
+可选的 AIDebug 是另一个仓库和插件。项目安装它之后，`aiguide_tools` 和 HTTP 工具列表会增加 19 个 `ai_debug_*` schema；使用前需从 AI Debug 菜单或其可信本地加载脚本激活调试模块。AI Guide 本身不安装、不加载、不激活调试程序集。`.ai_debug/config.json` 管理调试设置；旧 `debug_enabled` 不再生效。详见 [AIDebug s&box 手册](https://github.com/RailgunHamster/AIDebug/tree/main/Sbox)。
 
 ### 2.2 HTTP MCP
 
@@ -149,7 +153,7 @@ Invoke-RestMethod 'http://127.0.0.1:7660/mcp' -Method Post `
 
 已实现的回退包括：已有场景的演练后撤销记录、对象选择、原来激活的场景标签；关闭新打开的场景标签/窗口；重新打开被关闭的原场景并恢复其内存快照（原撤销历史无法重建）；恢复检查点中备份的修改/删除文件；把演练新建文件移到检查点目录保留；恢复仍然激活的 Hammer 地图中仍存在的原对象属性与对象选择，移除演练新增对象。
 
-备份按内容去重，位于 `Art/build/aiguide-checkpoints/` 和 `Art/build/aiguide-checkpoint-blobs/`。每份检查点有 manifest。单个原文件最多 64 MiB，总量最多 512 MiB；超限文件列在返回的 `skipped_files`。生成缓存、版本控制内部状态和 Art/build 不参与文件回退。
+备份按内容去重，位于 `Art/build/aiguide-checkpoints/` 和 `Art/build/aiguide-checkpoint-blobs/`。每份检查点有 manifest。单个原文件最多 64 MiB，总量最多 512 MiB；超限文件列在返回的 `skipped_files`。生成缓存、全部点目录（包括 `.ai_debug/`）、版本控制内部状态和 Art/build 不参与文件回退。
 
 边界会在结果中报告：被关闭场景的原撤销历史、原 Hammer 地图已关闭或切换、全局设置、原生编辑器撤销历史及大文件内容。未纳入场景撤销系统的任意语义修改不能自动保证回退。不能把回退当作整个工作站的虚拟机快照。做场景语义修改时使用 `UndoScope`；演练期间避免同时处理无关工作。
 
@@ -217,4 +221,4 @@ flowchart LR
 
 安装器的独立文件系统测试用 `Sbox/Tools/Test-Install.ps1`，验证全新安装、来源记录、自定义教程迁移、旧文件备份、重复安装和冲突保护。它不会启动编辑器；测试目录保留在本仓库忽略的 `Sbox/Art/build/installer-tests/` 下。
 
-已验证 25 项功能回归，包括 17 项工具的调用链、模态对话框内 HTTP/文件桥、中文和 Emoji 输入、插件面板、树/标签/菜单、实际滑块拖动、教程条件、演练/配方/重载、场景和文件回退、关闭场景恢复、控件重建定位，以及连续 8 轮模态框—高亮—截图的生命周期测试。另测 Hammer 原对象移动/改名及新增对象回退；删除原对象的边界按第 6 节明确报告。
+1.1 已验证 26 项功能回归，包括 17 项工具的调用链、模态对话框内 HTTP/文件桥、中文和 Emoji 输入、插件面板、树/标签/菜单、实际滑块拖动、教程条件、演练/配方/重载、场景和文件回退、关闭场景恢复、控件重建定位，以及连续 8 轮模态框—高亮—截图的生命周期测试。另测 Hammer 原对象移动/改名及新增对象回退；删除原对象的边界按第 6 节明确报告。

@@ -15,7 +15,7 @@ namespace AIGuide.Sbox;
 /// <summary>Project editor plugin. Native UI continues to work inside Qt modal loops.</summary>
 public static class GuideHost
 {
-    public const string Version = "1.0.0";
+    public const string Version = "1.1.0";
     private static readonly ConcurrentQueue<Action> main = new();
     private static GuideTransport transport;
     private static string root;
@@ -53,7 +53,7 @@ public static class GuideHost
             {
                 transport?.Dispose(); transport=null; root=current; Directory.CreateDirectory(Data);
                 var path=Path.Combine(Data,"config.json");
-                Config=File.Exists(path)?JsonNode.Parse(File.ReadAllText(path)).AsObject():new JsonObject { ["enabled"]=true,["port"]=7660,["debug_enabled"]=false };
+                Config=File.Exists(path)?JsonNode.Parse(File.ReadAllText(path)).AsObject():new JsonObject { ["enabled"]=true,["port"]=7660 };
                 GuideNative.Load(root);
                 if(Config.B("enabled",true)) { transport=new GuideTransport(Config.I("port",7660)); transport.Start(); }
                 File.WriteAllText(Path.Combine(Data,"session.json"),new JsonObject { ["pid"]=Environment.ProcessId,["url"]=Address,["version"]=Version,["project"]=root }.ToJsonString());
@@ -120,6 +120,7 @@ public static class GuideHost
     internal static async Task<JsonNode> Call(string name,JsonObject a=null)
     {
         a??=new JsonObject();
+        if(name.StartsWith("ai_debug_",StringComparison.Ordinal))return await GuideDebugBridge.Call(name[9..],a);
         if(name.StartsWith("aiguide_",StringComparison.Ordinal))name=name[8..];
         switch(name)
         {

@@ -76,7 +76,7 @@ internal sealed class GuideCheckpoint
             foreach (var path in Directory.EnumerateDirectories(dir))
             {
                 var rel = Path.GetRelativePath(root, path).Replace('\\', '/');
-                if (ignore.Contains(Path.GetFileName(path)) || rel.StartsWith("Art/build", StringComparison.OrdinalIgnoreCase) || rel.StartsWith("Art/baseline", StringComparison.OrdinalIgnoreCase)) continue;
+                if (Path.GetFileName(path).StartsWith('.') || ignore.Contains(Path.GetFileName(path)) || rel.StartsWith("Art/build", StringComparison.OrdinalIgnoreCase) || rel.StartsWith("Art/baseline", StringComparison.OrdinalIgnoreCase)) continue;
                 if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0) pending.Push(path);
             }
         }

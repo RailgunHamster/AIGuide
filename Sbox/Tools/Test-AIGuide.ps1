@@ -2,7 +2,7 @@
 param([Parameter(Mandatory)][string]$Project,[string]$BaseUrl='http://127.0.0.1:7660/mcp',[switch]$SkipHammer,[switch]$KeepFixture,[string]$ResultsPath)
 $ErrorActionPreference='Stop'
 $project=(Resolve-Path -LiteralPath $Project).Path
-if(!(Test-Path -LiteralPath (Join-Path $project '.sbproj'))){throw 'Pass -Project with the installed s&box project directory.'}
+if(@(Get-ChildItem -LiteralPath $project -File -Force -Filter '*.sbproj').Count -ne 1){throw 'Pass -Project with the installed s&box project directory.'}
 if(!$ResultsPath){$ResultsPath=Join-Path $project 'Art/build/aiguide-tests/results.json'}
 New-Item -ItemType Directory -Force -Path (Split-Path $ResultsPath) | Out-Null
 $results=[Collections.Generic.List[object]]::new();$script:requestId=0
@@ -30,8 +30,10 @@ function Find-One($query){if($script:fixture -and !$query.ContainsKey('under')){
 function Act($action,$target,$extra=@{}){$parameters=@{action=$action;target=$target};foreach($entry in $extra.GetEnumerator()){$parameters[$entry.Key]=$entry.Value};Tool ui_act $parameters}
 function Wait-Guide($state,[int]$index=-1){$until=[DateTime]::UtcNow.AddSeconds(5);do{$s=Tool guide_status;if($s.state -eq $state -and ($index -lt 0 -or $s.index -eq $index)){return $s};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $until);throw "Guide did not reach $state/$index : $($s|ConvertTo-Json -Depth 3 -Compress)"}
 $fixture=$null;$token=[Guid]::NewGuid().ToString('N');$baseline=Join-Path $project "Tools/aiguide-test-$token.txt";$created=Join-Path $project "Tools/aiguide-created-$token.txt";$recipe="integration-$token"
+New-Item -ItemType Directory -Force -Path (Join-Path $project 'Tools')|Out-Null
+$localOnly=Join-Path $project ".aiguide-test-state/$token.txt"
 try{
-    Test 'MCP initialize and 17 schemas' {Assert ((Rpc initialize @{protocolVersion='2025-11-25'}).serverInfo.name -eq 'sbox-ai-guide') 'server name';Assert ((Rpc 'tools/list').tools.Count -eq 17) 'tool count'}
+    Test 'MCP initialize, 17 guide schemas and optional debugger schemas' {Assert ((Rpc initialize @{protocolVersion='2025-11-25'}).serverInfo.name -eq 'sbox-ai-guide') 'server name';$expected=if(Test-Path -LiteralPath "$project/Editor/AIDebug/ToolDefinitions.json"){36}else{17};Assert ((Rpc 'tools/list').tools.Count -eq $expected) 'tool count'}
     $initial=Tool editor_state;if($initial.ui.modal){throw 'Close the pre-existing editor modal before running tests; it is not a test fixture.'}
     Test 'editor context and scene hierarchy' {Assert ((Tool editor_state).project -eq $project) 'project';Assert ((Tool scene_tree @{depth=1}).children.Count -gt 0) 'scene tree'}
     Test 'project guide panel layout and recipe button' {
@@ -103,6 +105,11 @@ try{
         Tool recipe_play @{name=$recipe;title='回放测试'};Assert ((Tool guide_status).title -eq '回放测试') 'recipe overrides'
         Tool guide_control @{action='next'};Tool guide_control @{action='restart'};Wait-Guide running 0;Tool guide_control @{action='stop'}
     }
+    Test 'machine-local dot directories are excluded from rollback' {
+        New-Item -ItemType Directory -Force -Path (Split-Path $localOnly)|Out-Null
+        [IO.File]::WriteAllText($localOnly,'before');Tool rehearsal_start;[IO.File]::WriteAllText($localOnly,'after');Tool rehearsal_stop @{rollback=$true}
+        Assert ([IO.File]::ReadAllText($localOnly) -eq 'after') 'Machine-local data was rolled back'
+    }
     if(!$SkipHammer){Test 'Hammer live Qt UI discovery' {$hammer=Exec 'return new { Open=Editor.MapEditor.Hammer.Open, File=Editor.MapEditor.Hammer.Open?Editor.MapEditor.Hammer.ActiveMap?.PathName:null };';Assert $hammer.Open 'Open a disposable map in Hammer before running the Hammer test';Assert ((Tool ui_find @{class='Hammer';visible_only=$true}).total -gt 0) 'Hammer Qt UI'}}
     Test 'closed unsaved scene restored from memory checkpoint' {
         $goId=Exec 'var s=SceneEditorSession.CreateDefault();s.Scene.Name="AI Guide Closed Scene Test";s.MakeActive();var go=s.Scene.CreateObject();go.Name="AI Guide Closed Scene Object";return go.Id.ToString();'
@@ -134,7 +141,7 @@ try{
     Test 'plugin reload and service recovery' {Tool ai_guide_reload;Start-Sleep -Milliseconds 800;Assert ((Rpc ping) -is [object]) 'reload ping';Assert ((Tool editor_state).native.native_ui) 'reload native bridge'}
 }finally{
     try{Tool guide_control @{action='stop'}|Out-Null;if(!$KeepFixture){Native test_close|Out-Null}}catch{}
-    foreach($path in @($baseline,$created,(Join-Path $project "Config/AIGuide/Recipes/$recipe.json"))){if(Test-Path $path){$dest=Join-Path (Split-Path $ResultsPath) ([IO.Path]::GetFileName($path));Move-Item -LiteralPath $path -Destination $dest -Force}}
+    foreach($path in @($baseline,$created,$localOnly,(Join-Path $project "Config/AIGuide/Recipes/$recipe.json"))){if(Test-Path $path){$dest=Join-Path (Split-Path $ResultsPath) ([IO.Path]::GetFileName($path));Move-Item -LiteralPath $path -Destination $dest -Force}}
     $results|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $ResultsPath -Encoding utf8
 }
 $failed=@($results|Where-Object {!$_.passed});Write-Output "$($results.Count-$failed.Count)/$($results.Count) passed; $ResultsPath"
