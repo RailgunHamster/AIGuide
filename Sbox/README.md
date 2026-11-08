@@ -12,6 +12,14 @@ AIGuide/
     └── Install.ps1        安装到游戏项目
 ```
 
+## 兼容官方与自定义引擎
+
+插件以 Windows x64 的官方 s&box 编辑器为基线，当前实际验证版本为 Steam `26.10.27c`；同时兼容 LTN 自定义引擎与 railgunhamster 所用旧版 SDK。`MapNode.NodeId`、`Hammer.HasUnsavedChanges` 等便利接口通过能力检测适配，缺少这些成员不会再造成整个项目编译失败。
+
+原生层支持 `BuildInfo.json` 明确记录的 Qt 5.15.2 模块组合，校验适配 DLL 自身与整组 Qt DLL。官方 Qt 和从 railgunhamster 读取的旧 Qt 已分别在隔离编辑器中通过 25 项功能检查；旧版托管 SDK 另做完整插件编译检查。没有替换团队机器上的引擎 DLL。重建适配 DLL 后需重新验证其他 Qt 组合。
+
+支持自动部署的团队项目可以分享 Git 依赖锁与项目加载入口，成员只需更新项目并打开编辑器。下列安装命令面向初次集成插件的程序人员与插件开发者。
+
 ## 安装
 
 在 PowerShell 7 中，从本仓库执行：

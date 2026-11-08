@@ -146,16 +146,17 @@ internal sealed class GuideHammerCheckpoint
     private Editor.MapDoc.MapDocument document;
     private object saved;
     private Type savedType;
-    private HashSet<int> ids;
-    private int[] selected;
+    private HashSet<long> ids;
+    private long[] selected;
     private Editor.MapEditor.SelectMode mode;
     // Match Hammer's own MCP node enumeration. Prefab contents belong to other worlds
     // with separate ID spaces and must never be removed through this map document.
     private static IEnumerable<Editor.MapDoc.MapNode> Walk(Editor.MapDoc.MapWorld world){yield return world;foreach(var node in world.Children.Where(n=>n.World==world))yield return node;}
+    private static long Id(Editor.MapDoc.MapNode node)=>GuideCompatibility.NodeId(node)??throw new NotSupportedException("This engine cannot expose Hammer node identity; native Hammer checkpoint rollback is unavailable.");
     internal static GuideHammerCheckpoint Capture()
     {
         if(!Editor.MapEditor.Hammer.Open||Editor.MapEditor.Hammer.ActiveMap is not {} map)return null;
-        var value=new GuideHammerCheckpoint{document=map,ids=Walk(map.World).Select(n=>n.NodeId).ToHashSet(),selected=Editor.MapEditor.Selection.All.Where(n=>n.World==map.World).Select(n=>n.NodeId).ToArray(),mode=Editor.MapEditor.Selection.SelectMode};
+        var value=new GuideHammerCheckpoint{document=map,ids=Walk(map.World).Select(Id).ToHashSet(),selected=Editor.MapEditor.Selection.All.Where(n=>n.World==map.World).Select(Id).ToArray(),mode=Editor.MapEditor.Selection.SelectMode};
         value.savedType=typeof(Editor.MapDoc.MapDocument).Assembly.GetType("NativeHammer.CSavedObjects")??throw new NotSupportedException("Hammer saved-object interop is unavailable in this engine.");
         value.saved=value.Invoke("Create");
         foreach(var child in map.World.Children.Where(n=>n.World==map.World))value.Invoke("SaveObject",child);
@@ -166,13 +167,13 @@ internal sealed class GuideHammerCheckpoint
     {
         try{
             if(!Editor.MapEditor.Hammer.Open||Editor.MapEditor.Hammer.ActiveMap!=document){warnings.Add("The original Hammer document is no longer active; its native checkpoint was retained without touching another map.");return;}
-            foreach(var node in Walk(document.World).Reverse().ToArray())if(node.IsValid()&&!ids.Contains(node.NodeId))document.DeleteNode(node);
+            foreach(var node in Walk(document.World).Reverse().ToArray())if(node.IsValid()&&!ids.Contains(Id(node)))document.DeleteNode(node);
             Invoke("RestoreObjects");
-            var remaining=Walk(document.World).Select(n=>n.NodeId).ToHashSet();
+            var remaining=Walk(document.World).Select(Id).ToHashSet();
             var missing=ids.Where(id=>!remaining.Contains(id)).ToArray();
             if(missing.Length>0)warnings.Add("Hammer cannot reconstruct deleted original nodes through its saved-object API. Use native Undo for these IDs: "+string.Join(", ",missing));
             Editor.MapEditor.Selection.Clear();Editor.MapEditor.Selection.SelectMode=mode;
-            foreach(var id in selected)if(Walk(document.World).FirstOrDefault(n=>n.NodeId==id) is {} node)Editor.MapEditor.Selection.Add(node);
+            foreach(var id in selected)if(Walk(document.World).FirstOrDefault(n=>Id(n)==id) is {} node)Editor.MapEditor.Selection.Add(node);
             report.Add("Restored surviving Hammer objects and object selection; native undo history/settings are not rewound.");
         }catch(Exception e){warnings.Add("Hammer rollback: "+e.GetBaseException().Message);}
         finally{Release();}

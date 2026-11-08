@@ -15,7 +15,7 @@ namespace AIGuide.Sbox;
 /// <summary>Project editor plugin. Native UI continues to work inside Qt modal loops.</summary>
 public static class GuideHost
 {
-    public const string Version = "1.1.0";
+    public const string Version = "1.1.1";
     private static readonly ConcurrentQueue<Action> main = new();
     private static GuideTransport transport;
     private static string root;
@@ -81,8 +81,8 @@ public static class GuideHost
         var selected=new JsonArray();
         if(s is not null)foreach(var o in s.Selection.OfType<GameObject>()){selected.Add(o.Id.ToString());selected.Add(o.Name);}
         var inspecting=new JsonArray();var inspected=EditorUtility.InspectorObject;
-        if(inspected!=null){inspecting.Add(inspected.GetType().FullName);inspecting.Add(inspected.ToString());if(inspected is GameObject go){inspecting.Add(go.Id.ToString());inspecting.Add(go.Name);}if(inspected is Component component)inspecting.Add(component.Id.ToString());if(inspected is Editor.MapDoc.MapNode node){inspecting.Add(node.NodeId.ToString());inspecting.Add(node.Name);}}
-        JsonObject hammer=null;if(Editor.MapEditor.Hammer.Open&&Editor.MapEditor.Hammer.ActiveMap is {} map){var nodes=Editor.MapEditor.Selection.All.ToArray();foreach(var node in nodes){selected.Add(node.NodeId.ToString());selected.Add(node.Name);}hammer=new(){["file"]=map.PathName,["modified"]=Editor.MapEditor.Hammer.HasUnsavedChanges,["selected"]=GJson.Node(nodes.Select(n=>new{n.NodeId,n.Name}))};}
+        if(inspected!=null){inspecting.Add(inspected.GetType().FullName);inspecting.Add(inspected.ToString());if(inspected is GameObject go){inspecting.Add(go.Id.ToString());inspecting.Add(go.Name);}if(inspected is Component component)inspecting.Add(component.Id.ToString());if(inspected is Editor.MapDoc.MapNode node){if(GuideCompatibility.NodeId(node) is {} nodeId)inspecting.Add(nodeId.ToString());inspecting.Add(node.Name);}}
+        JsonObject hammer=null;if(Editor.MapEditor.Hammer.Open&&Editor.MapEditor.Hammer.ActiveMap is {} map){var nodes=Editor.MapEditor.Selection.All.ToArray();foreach(var node in nodes){if(GuideCompatibility.NodeId(node) is {} nodeId)selected.Add(nodeId.ToString());selected.Add(node.Name);}hammer=new(){["file"]=map.PathName,["modified"]=GuideCompatibility.HammerModified(typeof(Editor.MapEditor.Hammer)),["selected"]=GJson.Node(nodes.Select(n=>new{NodeId=GuideCompatibility.NodeId(n),n.Name}))};}
         return new JsonObject { ["project"]=Root,["selected"]=selected,["main_screen"]=Editor.MapEditor.Hammer.Window?.IsActiveWindow==true?"Hammer":s?.Scene?.Name??"",["inspecting"]=inspecting,["scene"]=s?.Scene?.Source?.ResourcePath,["open_scenes"]=GJson.Node(SceneEditorSession.All.Select(x=>new{path=x.Scene?.Source?.ResourcePath,name=x.Scene?.Name,modified=x.HasUnsavedChanges})),["hammer"]=hammer,["playing"]=Game.IsPlaying };
     }
     internal static JsonNode EditorState()=>new JsonObject { ["version"]=Version,["project"]=Root,["editor"]=Context(),["ui"]=GuideNative.Call("state"),["native"]=GuideNative.Call("info"),["transport"]=Address,["rehearsing"]=rehearsal!=null };

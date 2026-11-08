@@ -27,11 +27,13 @@ internal static class GuideNative
         if (!File.Exists(source)) throw new FileNotFoundException("AI Guide Qt adapter is missing; update the whole plugin directory.", source);
         var info=Path.Combine(root,"Editor","AIGuide","Native","BuildInfo.json");
         if(!File.Exists(info))throw new FileNotFoundException("AI Guide native build information is missing; update the whole plugin directory.",info);
-        var expected=JsonNode.Parse(File.ReadAllText(info)).AsObject().O("modules");
-        using(var process=System.Diagnostics.Process.GetCurrentProcess())foreach(var module in expected){
-            var loaded=System.Linq.Enumerable.FirstOrDefault(System.Linq.Enumerable.Cast<System.Diagnostics.ProcessModule>(process.Modules),m=>m.ModuleName.Equals(module.Key,StringComparison.OrdinalIgnoreCase));
-            if(loaded==null||!Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(loaded.FileName))).Equals(module.Value.GetValue<string>(),StringComparison.OrdinalIgnoreCase))throw new NotSupportedException("AI Guide Qt ABI check failed for "+module.Key+". Rebuild the adapter against this engine, then restart the editor.");
-        }
+        var build=JsonNode.Parse(File.ReadAllText(info)).AsObject();
+        if(!Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source))).Equals(build["adapter_sha256"]?.GetValue<string>(),StringComparison.OrdinalIgnoreCase))
+            throw new NotSupportedException("AI Guide adapter does not match its build information; update the complete plugin package.");
+        var modules=new System.Collections.Generic.Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        using(var process=System.Diagnostics.Process.GetCurrentProcess())foreach(System.Diagnostics.ProcessModule module in process.Modules)
+            if(module.ModuleName is "Qt5Core.dll" or "Qt5Gui.dll" or "Qt5Widgets.dll")modules[module.ModuleName]=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module.FileName)));
+        GuideCompatibility.QtProfile(build,modules);
         var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source)))[..16];
         var cache = Path.Combine(root, "Art", "build", "aiguide-native-cache", hash);
         Directory.CreateDirectory(cache);
