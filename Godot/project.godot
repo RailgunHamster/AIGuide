@@ -1,5 +1,5 @@
 ; AIGuide 仓库自带的最小 Godot 工程：只用来编译、调试 addons/ai_guide。
-; 游戏项目通过 Verso 依赖只安装 Godot/addons/ai_guide，不会用到这个文件。
+; 游戏项目通过 Godot/install.py 安装 addons/ai_guide，不会复制这个开发工程。
 
 config_version=5
 

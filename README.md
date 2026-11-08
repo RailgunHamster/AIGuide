@@ -16,7 +16,21 @@
 
 ## 在游戏项目里使用（以 Godot 为例）
 
-插件就是 `Godot/addons/ai_guide` 这一个目录，放进游戏项目的 `addons/ai_guide` 即可：直接拷贝，或者用你习惯的依赖管理方式引用本仓库的这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
+只检出 `Godot/` 就包含安装所需的脚本、插件源码和开发工程模板：
+
+```powershell
+git clone --filter=blob:none --sparse https://github.com/RailgunHamster/AIGuide.git AIGuide
+git -C AIGuide sparse-checkout set Godot
+git -C AIGuide checkout <包含安装脚本的固定tag或commit>
+
+# 在 AIGuide 仓库根目录执行；目标为已有 Godot C# 项目：
+python Godot/install.py check --project "../MyGame"
+python Godot/install.py install --project "../MyGame"
+```
+
+安装脚本复制 `Godot/addons/ai_guide`、保留其他插件配置、启用 AI Guide 并执行 `dotnet build`。纯 GDScript 项目可显式添加 `--create-csharp`，创建最小 C# 宿主；仍需使用 Godot 4.8 .NET 编辑器和 .NET 10 SDK。
+
+要在安装后验证真实编辑器启动，加上 `--editor <Godot.NET编辑器路径>`。安装及更新会保护本地修改，支持只检查和重复执行。旧 `godot-v0.2.1` 不含安装脚本，可继续手动复制插件目录，或切换到包含安装脚本的版本。
 
 详见 [Godot/README.md](Godot/README.md)。
 

@@ -7,3 +7,7 @@ obj/
 *.user
 # 本地工具
 .ai_guide_bridge/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.venv/

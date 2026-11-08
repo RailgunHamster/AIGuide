@@ -1,20 +1,67 @@
 # AI Guide for Godot（C# 编辑器插件）
 
 让任意外部 AI Agent 通过 MCP **看见、操作、并可视化指引** Godot 编辑器的 UI。
-插件自带 MCP 服务（Streamable HTTP），零外部依赖。
+插件自带 MCP 服务（Streamable HTTP），无需另装 MCP 服务进程。
 
 ## 要求
-- **Godot 4.8 .NET 版编辑器**（插件是 C# 写的），游戏项目必须是 C# 工程（有 `.csproj`，目标框架 `net10.0`）。
-  纯 GDScript 工程需要先建 C# 工程：编辑器菜单 项目 → 工具 → C# → 创建 C# 解决方案。
+- **Godot 4.8 .NET 版编辑器**、**.NET 10 SDK**。插件是 C# 写的，需要项目中有使用 `Godot.NET.Sdk`、目标框架为 `net10.0` 的 `.csproj`。
+  纯 GDScript 项目可用安装脚本的 `--create-csharp` 创建最小 C# 宿主。
+- 安装脚本需要 **Python 3.10+**，只使用标准库；Git 用于获取和固定仓库版本。
 - 建议使用打了补丁的引擎：[`patches/ai_guide_synthetic_hover.patch`](patches/README.md)。不打补丁时按钮类控件只在系统光标位于该窗口内时才响应合成点击，插件会临时移动你的真实光标去点（你同时在用鼠标时可能失败）；打补丁后完全不碰光标。
 - 所有代码都包在 `#if TOOLS` 里，只在编辑器里编译，不进入导出的游戏。
 
 ## 安装
-1. 把本仓库的 `Godot/addons/ai_guide` 放进游戏项目的 `addons/ai_guide`：直接拷贝，或用任意依赖管理方式引用这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
-2. 编译一次 C# 工程（编辑器右上角的“构建”，或 `dotnet build`）。
-3. 项目设置 → 插件 → 启用 **AI Guide**。输出面板显示 `MCP 服务已启动：http://127.0.0.1:7650/mcp`。
-   - 端口：编辑器设置 `ai_guide/server/port`，或环境变量 `GODOT_AI_GUIDE_PORT`。
-   - 顶部菜单栏「帮助」右边会多一个 **AI** 菜单：引导教程 / 停止当前引导 / 复制 MCP 地址。
+
+### 获取 Godot 目录
+
+```powershell
+git clone --filter=blob:none --sparse https://github.com/RailgunHamster/AIGuide.git AIGuide
+git -C AIGuide sparse-checkout set Godot
+git -C AIGuide checkout <包含安装脚本的固定tag或commit>
+```
+
+稀疏检出会保留 `Godot/` 和必要的仓库根文件。安装脚本不依赖其他引擎目录、不自动切换 Git 版本。旧 `godot-v0.2.1` 没有安装脚本；使用该标签时可按下面的手动方式安装。
+
+### 安装到项目
+
+先关闭目标项目的编辑器。以下命令在 **AIGuide 仓库根目录**执行，项目路径可以包含空格：
+
+```powershell
+# 只检查目标和将修改的文件，不写入：
+python Godot/install.py check --project "../MyGame"
+python Godot/install.py install --project "../MyGame" --dry-run
+
+# 已有 C# 项目：复制、启用插件、编译项目：
+python Godot/install.py install --project "../MyGame"
+
+# 纯 GDScript 项目：显式创建最小 C# 宿主，再安装与编译：
+python Godot/install.py install --project "../MyGame" --create-csharp
+```
+
+安装器只把 `Godot/addons/ai_guide` 里的源码放入项目 `addons/ai_guide`，不会复制仓库自带的开发工程。它保留现有 `.csproj`、其他插件的启用项和其他项目设置。`--create-csharp` 仅在没有 C# 项目时创建最小 `.csproj` 并配置 C# 特性和程序集名。多个 `.csproj` 且无法从项目设置确定目标时，用 `--csproj <文件>` 选择。
+
+安装记录在 `addons/ai_guide/.aiguide-install.json`，包括源码提交和每个已安装文件的摘要，不记录本机绝对路径。建议随插件源码一起保存到游戏项目的版本控制中。再次运行 `install` 可以更新未被本地修改的文件；碰到本地定制代码或不受安装器管理的不同版本会拒绝覆盖。构建或验证失败会恢复本次修改的插件源码、项目设置和新建 `.csproj`；编译缓存可能保留。
+
+目录链接或其他依赖工具管理的插件需要继续用原工具管理；安装器会拒绝向链接目录写入。手动安装时直接复制 `Godot/addons/ai_guide`，构建 C# 工程，再在项目设置 → 插件中启用 **AI Guide**。
+
+### 验证和日常使用
+
+```powershell
+# 可在 install 后加 --editor 一次完成安装、构建和验证：
+python Godot/install.py install --project "../MyGame" --editor "C:/Godot/Godot.NET.exe"
+# 独立验证：
+python Godot/install.py verify --project "../MyGame" --editor "C:/Godot/Godot.NET.exe"
+# 重新编译；只复制与启用而暂不构建时可给 install 添加 --no-build：
+python Godot/install.py build --project "../MyGame"
+```
+
+`verify` 启动它自己管理的无窗口编辑器进程，在随机回环端口上检查 MCP 握手、工具列表和 `editor_state` 返回的项目路径，随后关闭该进程。它不会关闭其他编辑器。纯 GDScript 项目首次安装时，应同时传入 `--create-csharp`；`--no-build` 不能与安装后验证一起使用。
+
+验证后正常打开项目，AI Guide 已自动启用。输出面板应显示 `MCP 服务已启动：http://127.0.0.1:7650/mcp`。
+
+- 端口：编辑器设置 `ai_guide/server/port`，或环境变量 `GODOT_AI_GUIDE_PORT`。
+- 顶部菜单栏「帮助」右边会多一个 **AI** 菜单：引导教程 / 停止当前引导 / 复制 MCP 地址。
+- 不要求安装 AIDebug，也不要求使用定制引擎；引擎悬停补丁是可选改进。
 
 ## 连接 Agent
 - **Claude Code**：`claude mcp add --transport http godot-guide http://127.0.0.1:7650/mcp`
@@ -68,3 +115,16 @@
 - 正在执行的工具请求会在重新加载时被丢弃，HTTP 服务端与文件桥都有 30 秒兜底，超时会返回错误。
 
 需求与优先级见 [ROADMAP.md](ROADMAP.md)。
+
+## 安装器回归
+
+从仓库根目录运行：
+
+```powershell
+python Godot/tests/test_install.py
+# 额外验证真实 C# 编译、插件加载、MCP 握手和项目路径：
+$env:AIGUIDE_TEST_EDITOR = "C:/Godot/Godot.NET.exe"
+python Godot/tests/test_install.py
+```
+
+测试使用独立临时项目，覆盖重复安装、其他插件设置、GDScript 宿主、空格路径、Windows 换行及 BOM、本地改动保护、更新清理、失败回滚和真实编辑器启动。实际项目的插件和源码不参与测试修改。
