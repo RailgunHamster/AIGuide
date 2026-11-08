@@ -53,7 +53,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_gdscript_conversion_requires_explicit_choice(self):
-        with self.assertRaisesRegex(INSTALL.InstallError, "create-csharp"):
+        with self.assertRaisesRegex(INSTALL.InstallError, "create-csharp-host"):
             INSTALL.install(self.project, no_build=True)
         self.assertEqual(len(self.snapshot()), 1)
 

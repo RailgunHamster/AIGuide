@@ -5,7 +5,7 @@
 
 ## 要求
 - **Godot 4.8 .NET 版编辑器**、**.NET 10 SDK**。插件是 C# 写的，需要项目中有使用 `Godot.NET.Sdk`、目标框架为 `net10.0` 的 `.csproj`。
-  纯 GDScript 项目可用安装脚本的 `--create-csharp` 创建最小 C# 宿主。
+  纯 GDScript 项目可用安装脚本的 `--create-csharp-host` 创建最小 C# 宿主。
 - 安装脚本需要 **Python 3.10+**，只使用标准库；Git 用于获取和固定仓库版本。
 - 建议使用打了补丁的引擎：[`patches/ai_guide_synthetic_hover.patch`](patches/README.md)。不打补丁时按钮类控件只在系统光标位于该窗口内时才响应合成点击，插件会临时移动你的真实光标去点（你同时在用鼠标时可能失败）；打补丁后完全不碰光标。
 - 所有代码都包在 `#if TOOLS` 里，只在编辑器里编译，不进入导出的游戏。
@@ -35,10 +35,10 @@ python Godot/install.py install --project "../MyGame" --dry-run
 python Godot/install.py install --project "../MyGame"
 
 # 纯 GDScript 项目：显式创建最小 C# 宿主，再安装与编译：
-python Godot/install.py install --project "../MyGame" --create-csharp
+python Godot/install.py install --project "../MyGame" --create-csharp-host
 ```
 
-安装器只把 `Godot/addons/ai_guide` 里的源码放入项目 `addons/ai_guide`，不会复制仓库自带的开发工程。它保留现有 `.csproj`、其他插件的启用项和其他项目设置。`--create-csharp` 仅在没有 C# 项目时创建最小 `.csproj` 并配置 C# 特性和程序集名。多个 `.csproj` 且无法从项目设置确定目标时，用 `--csproj <文件>` 选择。
+安装器只把 `Godot/addons/ai_guide` 里的源码放入项目 `addons/ai_guide`，不会复制仓库自带的开发工程。它保留现有 `.csproj`、其他插件的启用项和其他项目设置。已有 C# 项目直接使用普通 `install` 命令，无需添加宿主参数。`--create-csharp-host` 仅在没有 C# 项目时创建最小 `.csproj` 并配置 C# 特性和程序集名，原有 GDScript 脚本照常使用。多个 `.csproj` 且无法从项目设置确定目标时，用 `--csproj <文件>` 选择。
 
 安装记录在 `addons/ai_guide/.aiguide-install.json`，包括源码提交和每个已安装文件的摘要，不记录本机绝对路径。建议随插件源码一起保存到游戏项目的版本控制中。再次运行 `install` 可以更新未被本地修改的文件；碰到本地定制代码或不受安装器管理的不同版本会拒绝覆盖。构建或验证失败会恢复本次修改的插件源码、项目设置和新建 `.csproj`；编译缓存可能保留。
 
@@ -55,7 +55,7 @@ python Godot/install.py verify --project "../MyGame" --editor "C:/Godot/Godot.NE
 python Godot/install.py build --project "../MyGame"
 ```
 
-`verify` 启动它自己管理的无窗口编辑器进程，在随机回环端口上检查 MCP 握手、工具列表和 `editor_state` 返回的项目路径，随后关闭该进程。它不会关闭其他编辑器。纯 GDScript 项目首次安装时，应同时传入 `--create-csharp`；`--no-build` 不能与安装后验证一起使用。
+`verify` 启动它自己管理的无窗口编辑器进程，在随机回环端口上检查 MCP 握手、工具列表和 `editor_state` 返回的项目路径，随后关闭该进程。它不会关闭其他编辑器。纯 GDScript 项目首次安装时，应同时传入 `--create-csharp-host`；`--no-build` 不能与安装后验证一起使用。
 
 验证后正常打开项目，AI Guide 已自动启用。输出面板应显示 `MCP 服务已启动：http://127.0.0.1:7650/mcp`。
 

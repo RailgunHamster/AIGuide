@@ -178,7 +178,9 @@ def csharp_project(project, text, create, selected=None):
     if selected:
         raise InstallError("Selected C# project does not exist")
     if not create:
-        raise InstallError("No C# project found. For a GDScript project add --create-csharp (requires Godot .NET).")
+        raise InstallError(
+            "No C# project found. For a GDScript project add --create-csharp-host (requires Godot .NET)."
+        )
     name = value_of(text, "dotnet", "project/assembly_name")
     assembly = json.loads(name) if name else "AIGuideHost"
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", assembly):
@@ -381,7 +383,7 @@ def main():
     parser.add_argument("action", choices=("check", "install", "build", "verify"))
     parser.add_argument("--project", type=Path, required=True, help="Target directory containing project.godot")
     parser.add_argument(
-        "--create-csharp", action="store_true", help="Create a minimal C# host for a GDScript-only project"
+        "--create-csharp-host", action="store_true", help="Create a minimal C# host for a GDScript-only project"
     )
     parser.add_argument("--csproj", type=Path, help="Select a C# project if the target contains several")
     parser.add_argument("--no-build", action="store_true", help="Copy and enable only; build before opening the editor")
@@ -393,10 +395,10 @@ def main():
     project = args.project.expanduser().resolve()
     try:
         if args.action == "check" or args.dry_run:
-            result = prepare(project, args.create_csharp, args.csproj)[3]
+            result = prepare(project, args.create_csharp_host, args.csproj)[3]
         elif args.action == "install":
             result = install(
-                project, create=args.create_csharp, csproj=args.csproj, no_build=args.no_build, editor=args.editor
+                project, create=args.create_csharp_host, csproj=args.csproj, no_build=args.no_build, editor=args.editor
             )
         elif args.action == "build":
             report = prepare(project, False, args.csproj)[3]

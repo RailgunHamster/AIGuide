@@ -28,7 +28,7 @@ python Godot/install.py check --project "../MyGame"
 python Godot/install.py install --project "../MyGame"
 ```
 
-安装脚本复制 `Godot/addons/ai_guide`、保留其他插件配置、启用 AI Guide 并执行 `dotnet build`。纯 GDScript 项目可显式添加 `--create-csharp`，创建最小 C# 宿主；仍需使用 Godot 4.8 .NET 编辑器和 .NET 10 SDK。
+安装脚本复制 `Godot/addons/ai_guide`、保留其他插件配置、启用 AI Guide 并执行 `dotnet build`。已有 C# 项目直接使用上面的命令，无需额外参数。纯 GDScript 项目可显式添加 `--create-csharp-host`，创建最小 C# 宿主；仍需使用 Godot 4.8 .NET 编辑器和 .NET 10 SDK。
 
 要在安装后验证真实编辑器启动，加上 `--editor <Godot.NET编辑器路径>`。安装及更新会保护本地修改，支持只检查和重复执行。旧 `godot-v0.2.1` 不含安装脚本，可继续手动复制插件目录，或切换到包含安装脚本的版本。
 
