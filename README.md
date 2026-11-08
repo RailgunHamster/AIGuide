@@ -13,12 +13,15 @@
 | 目录 | 引擎 | 状态 |
 |---|---|---|
 | [`Godot/`](Godot/README.md) | Godot 4.8（.NET 版编辑器，C# 插件） | 可用 |
+| [`Sbox/`](Sbox/README.md) | s&box Windows x64（项目编辑器插件，含 Hammer 原生 Qt 界面） | 可用 |
 
 ## 在游戏项目里使用（以 Godot 为例）
 
 插件就是 `Godot/addons/ai_guide` 这一个目录，放进游戏项目的 `addons/ai_guide` 即可：直接拷贝，或者用你习惯的依赖管理方式引用本仓库的这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
 
 详见 [Godot/README.md](Godot/README.md)。
+
+s&box 使用 `Sbox/Install.ps1 -Project <项目目录>` 安装。源码、测试和通用手册在本仓库的 `Sbox/` 中维护；游戏项目内是部署副本。详见 [Sbox/README.md](Sbox/README.md)。
 
 ## 仓库约定
 - 不放游戏文件、令牌和编辑器缓存（`.godot/` 等）。

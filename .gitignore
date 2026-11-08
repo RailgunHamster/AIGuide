@@ -7,3 +7,6 @@ obj/
 *.user
 # 本地工具
 .ai_guide_bridge/
+.ai_guide/
+# s&box local builds, checkpoints and screenshots
+/Sbox/Art/build/

@@ -1,0 +1,574 @@
+[
+  {
+    "name": "editor_state",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "s&box editor context: project, active/open scenes, selection, Hammer map, visible Qt windows, focus and tutorial.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "scene_tree",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Edited scene hierarchy: object IDs, names, components and optionally serialized component properties. Separate from native UI and Hammer brush geometry.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "Scene root, GameObject GUID or exact name."
+        },
+        "depth": {
+          "type": "integer",
+          "default": 6
+        },
+        "include_properties": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  },
+  {
+    "name": "ui_snapshot",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Structured live native Qt widgets, tree/list/table items, tabs, menus and QGraphicsItems, with rectangles/state/locators. Custom GPU canvases expose the viewport, not arbitrary drawn objects.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "max_nodes": {
+          "type": "integer",
+          "default": 600
+        },
+        "max_items": {
+          "type": "integer",
+          "default": 40,
+          "description": "Max sub-items listed per tree/list/menu."
+        },
+        "visible_only": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  {
+    "name": "ui_find",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Native Qt widgets/virtual items. Filters combine. Text/class/tooltip use case insensitive substrings; exact is case sensitive. Narrow ambiguous targets to a ref or locator.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "exact": {
+          "type": "boolean",
+          "default": false
+        },
+        "class": {
+          "type": "string",
+          "description": "Qt metaobject class name substring, e.g. Button, QLineEdit or CQHammer."
+        },
+        "name": {
+          "type": "string",
+          "description": "Exact node name."
+        },
+        "tooltip": {
+          "type": "string"
+        },
+        "property": {
+          "type": "string",
+          "description": "Inspector property path, e.g. surface_material_override/0."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "any",
+            "control",
+            "tree",
+            "tab",
+            "menu",
+            "graphic"
+          ],
+          "default": "any"
+        },
+        "under": {
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "visible_only": {
+          "type": "boolean",
+          "default": true
+        },
+        "limit": {
+          "type": "integer",
+          "default": 20
+        }
+      }
+    }
+  },
+  {
+    "name": "ui_describe",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Persistent locator, window, rectangle, visibility and hidden reasons (inactive tab, collapsed parent, clipping, hidden ancestor, modal blocker).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "target"
+      ]
+    }
+  },
+  {
+    "name": "ui_act",
+    "description": "Deliver native Qt mouse/key events without moving the OS cursor. Reports queued/delivering/completed/failed delivery. Event delivery does not prove an application-level change.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "click",
+            "double_click",
+            "right_click",
+            "middle_click",
+            "hover",
+            "scroll",
+            "drag",
+            "type",
+            "paste",
+            "key",
+            "focus"
+          ]
+        },
+        "target": {
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "x": {
+          "type": "number",
+          "description": "Canvas x in the window (instead of target)."
+        },
+        "y": {
+          "type": "number"
+        },
+        "window": {
+          "description": "Window ref/locator for x,y or key (default: main or target's window).",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "to": {
+          "description": "Drag destination: element or {\"x\":..,\"y\":..}.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "type inserts Unicode text; paste replaces text through clipboard Ctrl+A/Ctrl+V."
+        },
+        "keys": {
+          "type": "string",
+          "description": "For key: combo like \"ctrl+s\", \"Enter\", \"Escape\", \"F5\"."
+        },
+        "amount": {
+          "type": "integer",
+          "description": "For scroll: wheel steps, positive = down.",
+          "default": 3
+        },
+        "modifiers": {
+          "type": "object",
+          "properties": {
+            "ctrl": {
+              "type": "boolean"
+            },
+            "shift": {
+              "type": "boolean"
+            },
+            "alt": {
+              "type": "boolean"
+            },
+            "meta": {
+              "type": "boolean"
+            }
+          }
+        },
+        "show": {
+          "type": "boolean",
+          "default": false,
+          "description": "Highlight 350 ms before delivery; mark lasts about 1 second."
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "ui_highlight",
+    "description": "Show highlight boxes (numbered when several) on elements, with an optional callout text. Non-blocking: the user can keep working. Use for 'where is X?' questions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": {
+            "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "text": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "default": 6000,
+          "description": "0 = until cleared."
+        },
+        "clear": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remove existing highlights first (or only, if no targets)."
+        }
+      }
+    }
+  },
+  {
+    "name": "ui_guide",
+    "description": "Interactive numbered highlights, instruction bubble, dim spotlight, live targets, auto-scroll and conditions. Agent clicks do not satisfy human-click steps.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "description": "Short instruction shown in the callout."
+              },
+              "until": {
+                "description": "click (default), manual, or {any:[conditions]}, {exists:target}, {visible:target}, {text_contains:{target,text}}, {key:\"Ctrl+S\"}, {selected:\"GUID|name\"}, {inspecting:\"GUID|name\"}, {main_screen:\"scene name|Hammer\"}, {file_saved:{ext:\"scene\",contains:\"text\"}}. Pre-satisfied conditions require click/next.",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "action": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ],
+                "description": "ui_act action string or full argument object for do_step."
+              },
+              "clipboard": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "text"
+            ]
+          }
+        },
+        "dim": {
+          "type": "boolean",
+          "default": true,
+          "description": "Dim everything except the current target."
+        },
+        "auto_scroll": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "steps"
+      ]
+    }
+  },
+  {
+    "name": "guide_status",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Tutorial state, index/count, target waiting and bounded click/key/transition log.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "guide_control",
+    "description": "next/prev/stop, restart (rollback by default), or demonstrate do_step. Rollback reports its actual scope and omissions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "next",
+            "prev",
+            "restart",
+            "stop",
+            "do_step"
+          ]
+        },
+        "rollback": {
+          "type": "boolean",
+          "default": true,
+          "description": "restart only: first roll the editor back to how it was when the guide started (same rollback as rehearsals)."
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "editor_screenshot",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Native window PNG with overlay. target crops, window selects a whole window. Returns PNG and local path. Requires interactive desktop; GPU viewport capture may need a visible window.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "window": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "target": {
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "margin": {
+          "type": "integer",
+          "default": 80
+        },
+        "max_width": {
+          "type": "integer",
+          "default": 1600
+        }
+      }
+    }
+  },
+  {
+    "name": "editor_exec",
+    "description": "Trusted async C# method body on the editor UI thread. Globals Root/Tree, Node(nameOrGuid), FindAll<T>(), cancellationToken. Return a value. Use UndoScope for mutations; no GDScript/Godot API emulation.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "default": 15000,
+          "maximum": 120000,
+          "minimum": 100
+        }
+      },
+      "required": [
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "rehearsal_start",
+    "description": "Record ui_act with persistent locators; checkpoint scene undo/selection/tabs/windows, bounded project file backups and active Hammer objects. Arbitrary human/editor_exec input is not recorded.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "rehearsal_stop",
+    "description": "Convert actions to guide/recipe, optionally play, restore checkpoint by default. Restores scene undo/selection/active tab, closes new tabs/windows, restores backed-up files and active Hammer objects. Reports closed documents, settings/native history, skipped large files and mutations without undo. Hammer snapshots cannot reconstruct deleted original nodes; use native Undo for those. Inspect rollback.complete and rollback.warnings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "rollback": {
+          "type": "boolean",
+          "default": true
+        },
+        "title": {
+          "type": "string",
+          "description": "Guide/recipe title (default: rehearsal title)."
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Instruction text per generated step, in order (empty string keeps the default). Write them in the user's language."
+        },
+        "save_as": {
+          "type": "string",
+          "description": "Project tutorial name to save under Config/AIGuide/Recipes/."
+        },
+        "start_guide": {
+          "type": "boolean",
+          "default": false
+        },
+        "dim": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  {
+    "name": "recipe_list",
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List saved recipes (rehearsed procedures) in this project.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "recipe_play",
+    "description": "Start the guide for a saved recipe.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dim": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "ai_guide_reload",
+    "description": "Clear overlays and restart plugin services next frame. C# hotloads via s&box; native DLL updates require editor restart. No engine rebuild.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  }
+]
