@@ -18,6 +18,8 @@ AIGuide/
 
 原生层支持 `BuildInfo.json` 明确记录的 Qt 5.15.2 模块组合，校验适配 DLL 自身与整组 Qt DLL。官方 Qt 和从 railgunhamster 读取的旧 Qt 已分别在隔离编辑器中通过 25 项功能检查；旧版托管 SDK 另做完整插件编译检查。没有替换团队机器上的引擎 DLL。重建适配 DLL 后需重新验证其他 Qt 组合。
 
+1.2.1 的高亮使用独立、点击穿透且不抢焦点的透明工具窗口，由桌面合成器绘制，不再覆盖 Hammer 原生 GPU 子窗口。定时检查仅在目标位置或内容变化时刷新，不再每 80 毫秒隐藏、显示或置顶。更新后需重启编辑器以加载新的原生适配层。
+
 ## 标准 Library
 
 `Sbox/.sbproj` 声明 `railgunhamster.aiguide` Library。项目使用 Verso Git 依赖，将本仓库 `Sbox/` 映射到 `Libraries/AIGuide/`，固定到锁文件指定的提交。

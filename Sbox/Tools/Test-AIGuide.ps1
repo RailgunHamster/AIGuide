@@ -70,6 +70,18 @@ try{
       }finally{Native test_close_modal}
     }
     Test 'PNG screenshot and numbered overlay' {Tool ui_highlight @{targets=@($button.ref,$edit.ref);text='AI Guide 测试';duration_ms=0};$image=Tool editor_screenshot @{window=$fixture.ref};Assert ((Test-Path $image.path) -and $image.width -gt 100) 'screenshot';Tool ui_highlight @{clear=$true}}
+    Test 'overlay is composited, click-through and stable across timer ticks' {
+        Act focus $edit.ref;Tool ui_highlight @{target=$button.ref;text='稳定高亮';duration_ms=0};Start-Sleep -Milliseconds 200
+        $before=Native test_overlay_state;Assert ($before.overlays.Count -eq 1) 'one visible overlay'
+        $o=$before.overlays[0];Assert ($o.tool_window -and $o.layered -and $o.input_transparent -and $o.no_activate -and $o.geometry_matches) 'overlay must be a separate click-through compositor window'
+        Start-Sleep -Milliseconds 1200;$after=Native test_overlay_state
+        Assert ($after.overlays[0].shows -eq $o.shows -and $after.overlays[0].hides -eq $o.hides) 'timer toggled overlay visibility'
+        Assert ($after.overlays[0].paints -le $o.paints+1) 'unchanged overlay repeatedly repainted'
+        Assert ($after.focus -eq $before.focus) 'timer stole keyboard focus'
+        $count=[int]((Find-One @{name='guideCount';kind='control'}).text -replace '\D','');Act click $button.ref
+        Assert ([int]((Find-One @{name='guideCount';kind='control'}).text -replace '\D','') -eq $count+1) 'highlighted control must remain clickable'
+        Tool ui_highlight @{clear=$true}
+    }
     Test 'human click guide and pre-satisfied conditions' {
         Tool ui_guide @{title='交互测试';steps=@(@{target=$button.locator;text='点击计数'},@{target=$edit.locator;text='已有文本，不自动跳过';until=@{text_contains=@{target=$edit.locator;text='新文本'}}})}
         Act click $button.ref;Assert ((Tool guide_status).index -eq 0) 'agent click advanced human step'
@@ -110,7 +122,20 @@ try{
         [IO.File]::WriteAllText($localOnly,'before');Tool rehearsal_start;[IO.File]::WriteAllText($localOnly,'after');Tool rehearsal_stop @{rollback=$true}
         Assert ([IO.File]::ReadAllText($localOnly) -eq 'after') 'Machine-local data was rolled back'
     }
-    if(!$SkipHammer){Test 'Hammer live Qt UI discovery' {$hammer=Exec 'return new { Open=Editor.MapEditor.Hammer.Open, File=Editor.MapEditor.Hammer.Open?Editor.MapEditor.Hammer.ActiveMap?.PathName:null };';Assert $hammer.Open 'Open a disposable map in Hammer before running the Hammer test';Assert ((Tool ui_find @{class='Hammer';visible_only=$true}).total -gt 0) 'Hammer Qt UI'}}
+    if(!$SkipHammer){
+      Test 'Hammer live Qt UI discovery' {$hammer=Exec 'return new { Open=Editor.MapEditor.Hammer.Open, File=Editor.MapEditor.Hammer.Open?Editor.MapEditor.Hammer.ActiveMap?.PathName:null };';Assert $hammer.Open 'Open a disposable map in Hammer before running the Hammer test';Assert ((Tool ui_find @{class='Hammer';visible_only=$true}).total -gt 0) 'Hammer Qt UI'}
+      Test 'Hammer viewport remains stable and clickable under guide overlay' {
+        $view=(Tool ui_find @{class='CQMapView';exact=$true;visible_only=$true}).elements|Select-Object -First 1;Assert ($null -ne $view) 'Hammer viewport'
+        Act focus $view.ref;Tool ui_highlight @{target=$view.ref;text='Hammer 高亮回归';duration_ms=0};Start-Sleep -Milliseconds 200
+        $before=Native test_overlay_state;Start-Sleep -Milliseconds 1200;$after=Native test_overlay_state
+        Assert ($after.overlays.Count -eq 1 -and $after.overlays[0].input_transparent -and $after.overlays[0].no_activate) 'native viewport overlay input flags'
+        Assert ($after.overlays[0].shows -eq $before.overlays[0].shows -and $after.overlays[0].hides -eq $before.overlays[0].hides) 'Hammer overlay toggled visibility'
+        Assert ($after.focus -eq $before.focus) 'Hammer focus changed during timer'
+        Act click $view.ref;$log=(Tool guide_status).log
+        Assert (@($log|Where-Object {$_.event -eq 'click' -and $_.target.class -eq 'CQMapView'}).Count -gt 0) 'Hammer did not receive the click'
+        Tool ui_highlight @{clear=$true}
+      }
+    }
     Test 'closed unsaved scene restored from memory checkpoint' {
         $goId=Exec 'var s=SceneEditorSession.CreateDefault();s.Scene.Name="AI Guide Closed Scene Test";s.MakeActive();var go=s.Scene.CreateObject();go.Name="AI Guide Closed Scene Object";return go.Id.ToString();'
         Tool rehearsal_start @{title='关闭场景回退'};Exec 'SceneEditorSession.Active.Destroy();return true;';Tool rehearsal_stop @{rollback=$true}

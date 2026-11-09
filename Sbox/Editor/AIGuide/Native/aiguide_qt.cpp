@@ -101,8 +101,14 @@ struct Element {
 class Overlay:public QWidget {
 public:
     QVector<QPair<QRect,QString>> marks;QString caption;bool dim=false;
-    Overlay(QWidget*p):QWidget(p){setProperty("aiguideOwn",true);setAttribute(Qt::WA_TransparentForMouseEvents);setAttribute(Qt::WA_NoSystemBackground);setAttribute(Qt::WA_TranslucentBackground);}
+    int showCount=0,hideCount=0,paintCount=0;
+    // Hammer's GPU canvas has native child windows. Painting a translucent child
+    // over it invalidates/occludes that canvas; use a compositor-owned tool window.
+    Overlay(QWidget*p):QWidget(p,Qt::Tool|Qt::FramelessWindowHint|Qt::WindowTransparentForInput|Qt::WindowDoesNotAcceptFocus){setProperty("aiguideOwn",true);setAttribute(Qt::WA_TransparentForMouseEvents);setAttribute(Qt::WA_ShowWithoutActivating);setAttribute(Qt::WA_TranslucentBackground);setFocusPolicy(Qt::NoFocus);}
+    void showEvent(QShowEvent*e)override{++showCount;auto hwnd=reinterpret_cast<HWND>(internalWinId());if(hwnd)SetWindowLongPtrW(hwnd,GWL_EXSTYLE,GetWindowLongPtrW(hwnd,GWL_EXSTYLE)|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT);QWidget::showEvent(e);}
+    void hideEvent(QHideEvent*e)override{++hideCount;QWidget::hideEvent(e);}
     void paintEvent(QPaintEvent*)override{
+        ++paintCount;
         QPainter p(this);p.setRenderHint(QPainter::Antialiasing);
         if(dim){QPainterPath path;path.addRect(rect());for(auto&m:marks)path.addRoundedRect(QRectF(mapFromGlobal(m.first.topLeft()),m.first.size()).adjusted(-4,-4,4,4),5,5);path.setFillRule(Qt::OddEvenFill);p.fillPath(path,QColor(0,0,0,115));}
         for(auto&m:marks){QRect r(mapFromGlobal(m.first.topLeft()),m.first.size());p.setPen(QPen(QColor("#ffb74d"),3));p.setBrush(Qt::NoBrush);p.drawRoundedRect(r.adjusted(-3,-3,3,3),4,4);if(!m.second.isEmpty()){QRect tag(r.topLeft()-QPoint(0,23),QSize(qMax(28,m.second.size()*9),22));p.fillRect(tag,QColor("#ffb74d"));p.setPen(Qt::black);p.drawText(tag,Qt::AlignCenter,m.second);}}
@@ -239,7 +245,7 @@ public:
     void clear(){clearOverlays();if(bubble)bubble->hide();highlights={};state="stopped";}
     void bubbleFor(QWidget*window,QString text,QRect target){
         if(!bubble||bubble->parentWidget()!=window){if(bubble)bubble->deleteLater();auto b=new QFrame(window,Qt::Tool|Qt::FramelessWindowHint);b->setProperty("aiguideOwn",true);b->setAttribute(Qt::WA_ShowWithoutActivating);b->setStyleSheet("QFrame{background:#202936;color:#ffffff;border:1px solid #ffb74d;border-radius:6px} QLabel{border:none} QPushButton{padding:5px;color:white;background:#394557;border:1px solid #657184}");auto l=new QVBoxLayout(b);auto label=new QLabel(b);label->setWordWrap(true);label->setMinimumWidth(270);label->setMaximumWidth(340);l->addWidget(label);message=label;auto row=new QHBoxLayout;for(auto pair:QVector<QPair<QString,QString>>{{"prev","上一步"},{"next","下一步"},{"restart","从头开始"},{"stop","退出"}}){auto btn=new QPushButton(pair.second,b);row->addWidget(btn);connect(btn,&QPushButton::clicked,this,[this,action=pair.first]{control(action,true);});}l->addLayout(row);bubble=b;}
-        message->setText(text);bubble->adjustSize();QRect available=window->screen()->availableGeometry();QPoint p=target.isEmpty()?window->mapToGlobal(QPoint(20,40)):target.bottomRight()+QPoint(12,12);p.setX(qBound(available.left(),p.x(),qMax(available.left(),available.right()-bubble->width())));p.setY(qBound(available.top(),p.y(),qMax(available.top(),available.bottom()-bubble->height())));bubble->move(p);bubble->show();bubble->raise();
+        if(message->text()!=text){message->setText(text);bubble->adjustSize();}QRect available=window->screen()->availableGeometry();QPoint p=target.isEmpty()?window->mapToGlobal(QPoint(20,40)):target.bottomRight()+QPoint(12,12);p.setX(qBound(available.left(),p.x(),qMax(available.left(),available.right()-bubble->width())));p.setY(qBound(available.top(),p.y(),qMax(available.top(),available.bottom()-bubble->height())));if(bubble->pos()!=p)bubble->move(p);if(!bubble->isVisible()){bubble->show();bubble->raise();}
     }
     QJsonObject status(){return {{"state",state},{"title",title},{"index",step},{"step",step+1},{"total",steps.size()},{"steps",steps},{"log",events},{"waiting",state=="running"&&lastGuide["waiting"].toBool()},{"restart_armed",restartArmed}};}
     QJsonObject control(QString action,bool human=false){
@@ -250,19 +256,39 @@ public:
         else if(action!="next")throw std::runtime_error("Unknown guide control");return status();
     }
     void tick(){
-        clearOverlays();QVector<QPair<Element,QString>> marks;QWidget*root=nullptr;QString caption;
+        QVector<QPair<Element,QString>> marks;QWidget*root=nullptr;QString caption;
         if(markUntil>QDateTime::currentMSecsSinceEpoch())for(auto t:highlights){try{auto e=resolve(t);if(e.w){marks.append({e,QString::number(marks.size()+1)});root=e.w->window();}}catch(...){}}
         if(state=="running"&&step<steps.size()){
             auto s=steps[step].toObject();Element e;try{e=resolve(s["target"]);if(!preSatisfied&&condition(s["until"])) {advance("condition");return;}}catch(...){}
             if(e.w&&e.visible()){marks.append({e,QString::number(step+1)});root=e.w->window();lastGuide["waiting"]=false;}else{lastGuide["waiting"]=true;if(yes(lastGuide,"auto_scroll",true)&&e.index.isValid())if(auto v=qobject_cast<QAbstractItemView*>(e.w.data()))v->scrollTo(e.index);root=qApp->activeModalWidget()?qApp->activeModalWidget():qApp->activeWindow();}
+            while(root&&own(root))root=root->parentWidget();
+            if(root)root=root->window();
             caption=QString("%1  %2/%3\n%4%5").arg(title).arg(step+1).arg(steps.size()).arg(str(s,"text")).arg(preSatisfied?"\n条件已满足，点击目标或下一步继续。":(!e.w||!e.visible()?"\n等待目标显露…":""));
         }else if(!marks.isEmpty())caption=markText;
-        for(auto mark:marks){auto e=mark.first;auto win=e.w->window();auto overlay=overlays.value(win);if(!overlay){overlay=new Overlay(win);overlays[win]=overlay;}overlay->dim=state=="running"&&dim;overlay->setGeometry(win->rect());overlay->marks.append({e.rect(),mark.second});overlay->show();overlay->raise();overlay->update();}
-        // Clear stale marks once per frame, keeping all targets in the same window.
-        for(auto overlay:overlays)if(overlay){auto old=overlay->marks;overlay->marks.clear();for(auto mark:marks)if(mark.first.w->window()==overlay->parentWidget())overlay->marks.append({mark.first.rect(),mark.second});}
+        QHash<QWidget*,QVector<QPair<QRect,QString>>> grouped;
+        for(auto mark:marks)if(mark.first.visible())grouped[mark.first.w->window()].append({mark.first.rect(),mark.second});
+        for(auto win:grouped.keys())if(!overlays.value(win)){overlays[win]=new Overlay(win);connect(win,&QObject::destroyed,this,[this,win]{overlays.remove(win);});}
+        for(auto it=overlays.begin();it!=overlays.end();++it)if(auto overlay=it.value()){
+            auto win=it.key();auto next=grouped.value(win);
+            if(next.isEmpty()||!win->isVisible()||win->isMinimized()){if(overlay->isVisible())overlay->hide();continue;}
+            bool nextDim=state=="running"&&dim;
+            bool changed=overlay->marks!=next||overlay->dim!=nextDim;
+            overlay->marks=next;overlay->dim=nextDim;
+            QRect geometry(win->mapToGlobal(QPoint(0,0)),win->size());
+            if(overlay->geometry()!=geometry)overlay->setGeometry(geometry);
+            if(!overlay->isVisible()){overlay->show();overlay->raise();}
+            if(changed)overlay->update();
+        }
         if(root&&!own(root)&&!caption.isEmpty())bubbleFor(root,caption,marks.isEmpty()?QRect():marks.last().first.rect());else if(bubble)bubble->hide();
     }
     QJsonValue call(QString command,QJsonObject a){
+        if(command=="test_overlay_state"){
+            QJsonArray out;for(auto overlay:overlays)if(overlay&&overlay->isVisible()){
+                auto owner=overlay->parentWidget();auto style=GetWindowLongPtrW(reinterpret_cast<HWND>(overlay->internalWinId()),GWL_EXSTYLE);
+                out.append(QJsonObject{{"tool_window",overlay->isWindow()},{"input_transparent",bool(style&WS_EX_TRANSPARENT)},{"no_activate",bool(style&WS_EX_NOACTIVATE)},{"layered",bool(style&WS_EX_LAYERED)},{"geometry_matches",overlay->geometry()==QRect(owner->mapToGlobal(QPoint(0,0)),owner->size())},{"shows",overlay->showCount},{"hides",overlay->hideCount},{"paints",overlay->paintCount}});
+            }
+            return QJsonObject{{"overlays",out},{"focus",qApp->focusWidget()?ref(Element{qApp->focusWidget()}):QString()}};
+        }
         if(command=="test_fixture"){
             if(fixture){fixture->show();fixture->raise();return describe(Element{fixture});}
             auto win=new QMainWindow;win->setObjectName("AIGuideFixture");win->setWindowTitle("AI Guide native test");win->resize(640,540);fixture=win;
