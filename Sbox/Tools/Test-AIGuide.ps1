@@ -33,7 +33,7 @@ $fixture=$null;$token=[Guid]::NewGuid().ToString('N');$baseline=Join-Path $proje
 New-Item -ItemType Directory -Force -Path (Join-Path $project 'Tools')|Out-Null
 $localOnly=Join-Path $project ".aiguide-test-state/$token.txt"
 try{
-    Test 'MCP initialize, 17 guide schemas and optional debugger schemas' {Assert ((Rpc initialize @{protocolVersion='2025-11-25'}).serverInfo.name -eq 'sbox-ai-guide') 'server name';$expected=if(Test-Path -LiteralPath "$project/Editor/AIDebug/ToolDefinitions.json"){36}else{17};Assert ((Rpc 'tools/list').tools.Count -eq $expected) 'tool count'}
+    Test 'MCP initialize, 17 guide schemas and optional debugger schemas' {Assert ((Rpc initialize @{protocolVersion='2025-11-25'}).serverInfo.name -eq 'sbox-ai-guide') 'server name';$expected=if(Test-Path -LiteralPath "$project/Libraries/AIDebug/.sbproj"){36}else{17};Assert ((Rpc 'tools/list').tools.Count -eq $expected) 'tool count'}
     $initial=Tool editor_state;if($initial.ui.modal){throw 'Close the pre-existing editor modal before running tests; it is not a test fixture.'}
     Test 'editor context and scene hierarchy' {Assert ((Tool editor_state).project -eq $project) 'project';Assert ((Tool scene_tree @{depth=1}).children.Count -gt 0) 'scene tree'}
     Test 'project guide panel layout and recipe button' {
@@ -100,7 +100,7 @@ try{
         $stop=Tool rehearsal_stop @{rollback=$true;save_as=$recipe;texts=@('点击按钮','填入示例')}
         Assert ($stop.guide.steps.Count -eq 2) 'recorded steps';Assert ([IO.File]::ReadAllText($baseline) -eq 'before') 'existing file restore';Assert (!(Test-Path $created)) 'new file quarantine';Assert (!(Exec 'return Node("AI Guide Integration Object") != null;')) 'scene undo'
         Assert (Test-Path -LiteralPath "$project/Config/AIGuide/Recipes/$recipe.json") 'recipe must be saved in project config'
-        Assert (!(Test-Path -LiteralPath "$project/Editor/AIGuide/Recipes/$recipe.json")) 'recipe must not modify installed package'
+        Assert (!(Test-Path -LiteralPath "$project/Libraries/AIGuide/Editor/AIGuide/Recipes/$recipe.json")) 'recipe must not modify Library'
         $recipes=Tool recipe_list;Assert (($recipes|Where-Object name -eq $recipe).source -eq 'project') 'project recipe listing';Assert (@($recipes|Where-Object source -eq builtin).Count -gt 0) 'built-in recipes'
         Tool recipe_play @{name=$recipe;title='回放测试'};Assert ((Tool guide_status).title -eq '回放测试') 'recipe overrides'
         Tool guide_control @{action='next'};Tool guide_control @{action='restart'};Wait-Guide running 0;Tool guide_control @{action='stop'}

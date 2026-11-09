@@ -69,7 +69,7 @@ internal sealed class GuideTransport:IDisposable
     }
     internal static JsonArray Definitions()
     {
-        var path=Path.Combine(GuideHost.Root,"Editor","AIGuide","ToolDefinitions.json");
+        var path=Path.Combine(GuideHost.LibraryRoot,"Editor","AIGuide","ToolDefinitions.json");
         var result=JsonNode.Parse(File.ReadAllText(path)).AsArray();
         foreach(var tool in GuideDebugBridge.Definitions())result.Add(tool.DeepClone());
         return result;

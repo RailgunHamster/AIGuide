@@ -1,0 +1,18 @@
+{
+  "Title": "AI Guide",
+  "Type": "library",
+  "Org": "railgunhamster",
+  "Ident": "aiguide",
+  "Schema": 1,
+  "IncludeSourceFiles": false,
+  "Resources": null,
+  "PublishUsedAssetsOnly": false,
+  "PackageReferences": [],
+  "EditorReferences": [],
+  "Mounts": null,
+  "IsStandaloneOnly": false,
+  "AI": {
+    "EnableMcpCommunication": true
+  },
+  "Metadata": {}
+}

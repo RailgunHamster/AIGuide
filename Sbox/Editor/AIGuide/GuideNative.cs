@@ -19,13 +19,13 @@ internal static class GuideNative
     private static IntPtr library;
     [SkipHotload] private static InvokeManaged invoke;
     internal static bool Loaded => dispatch != null;
-    internal static void Load(string root)
+    internal static void Load(string libraryRoot, string projectRoot)
     {
         if (dispatch != null) return;
         if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess) throw new PlatformNotSupportedException("AI Guide native UI requires Windows x64 and Qt 5.15.2.");
-        var source = Path.Combine(root, "Editor", "AIGuide", "Native", "aiguide_qt5.dll");
+        var source = Path.Combine(libraryRoot, "Editor", "AIGuide", "Native", "aiguide_qt5.dll");
         if (!File.Exists(source)) throw new FileNotFoundException("AI Guide Qt adapter is missing; update the whole plugin directory.", source);
-        var info=Path.Combine(root,"Editor","AIGuide","Native","BuildInfo.json");
+        var info=Path.Combine(libraryRoot,"Editor","AIGuide","Native","BuildInfo.json");
         if(!File.Exists(info))throw new FileNotFoundException("AI Guide native build information is missing; update the whole plugin directory.",info);
         var build=JsonNode.Parse(File.ReadAllText(info)).AsObject();
         if(!Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source))).Equals(build["adapter_sha256"]?.GetValue<string>(),StringComparison.OrdinalIgnoreCase))
@@ -35,7 +35,7 @@ internal static class GuideNative
             if(module.ModuleName is "Qt5Core.dll" or "Qt5Gui.dll" or "Qt5Widgets.dll")modules[module.ModuleName]=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module.FileName)));
         GuideCompatibility.QtProfile(build,modules);
         var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(source)))[..16];
-        var cache = Path.Combine(root, "Art", "build", "aiguide-native-cache", hash);
+        var cache = Path.Combine(projectRoot, ".ai_guide", "native-cache", hash);
         Directory.CreateDirectory(cache);
         var path = Path.Combine(cache, "aiguide_qt5.dll");
         if (!File.Exists(path)) File.Copy(source, path);

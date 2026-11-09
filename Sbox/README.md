@@ -9,7 +9,7 @@ AIGuide/
     ├── Editor/AIGuide/     插件代码、原生适配层、内置教程
     ├── Tools/             集成测试
     ├── docs/              通用使用手册与架构
-    └── Install.ps1        安装到游戏项目
+    └── .sbproj            标准 Library 入口
 ```
 
 ## 兼容官方与自定义引擎
@@ -18,28 +18,15 @@ AIGuide/
 
 原生层支持 `BuildInfo.json` 明确记录的 Qt 5.15.2 模块组合，校验适配 DLL 自身与整组 Qt DLL。官方 Qt 和从 railgunhamster 读取的旧 Qt 已分别在隔离编辑器中通过 25 项功能检查；旧版托管 SDK 另做完整插件编译检查。没有替换团队机器上的引擎 DLL。重建适配 DLL 后需重新验证其他 Qt 组合。
 
-支持自动部署的团队项目可以分享 Git 依赖锁与项目加载入口，成员只需更新项目并打开编辑器。下列安装命令面向初次集成插件的程序人员与插件开发者。
+## 标准 Library
 
-## 安装
+`Sbox/.sbproj` 声明 `railgunhamster.aiguide` Library。项目使用 Verso Git 依赖，将本仓库 `Sbox/` 映射到 `Libraries/AIGuide/`，固定到锁文件指定的提交。
 
-在 PowerShell 7 中，从本仓库执行：
+成员只需完成 Verso 项目更新并打开编辑器，s&box 自动发现 Library、编译 `Editor/` 并显示 **AI Guide → 教程与状态**。不执行安装脚本，不需要 IDE 或 SDK。插件不复制到主项目的 `Editor/`，也不更新自己的源码。以前的复制安装器已移除。
 
-```powershell
-& ./Sbox/Install.ps1 -Project 'C:/path/to/game'
-& ./Sbox/Install.ps1 -Project 'C:/path/to/game' -Action Check
-& ./Sbox/Install.ps1 -Project 'C:/path/to/game' -DryRun
-& ./Sbox/Install.ps1 -Project 'C:/path/to/game' -Action Verify -Engine 'C:/path/to/sbox/game'
-```
+C# 编译产物由编辑器生成，不入库。原生 Qt 适配 DLL 与验证信息随 Git 提供；它只在主项目 `.ai_guide/native-cache/` 中建立运行缓存。内置教程从 Library 读取，项目教程仍在 `Config/AIGuide/Recipes/`，同名项目教程优先。本机端口、会话和截图在 `.ai_guide/`，不共享。
 
-目标项目必须有 `.sbproj`。安装前关闭编辑器；安装器把插件复制到项目 `Editor/AIGuide/`，保留旧部署备份，并将部署目录加入项目的 `.loreignore` 或 `.gitignore`。**请在本仓库修改插件，再重新安装；项目中的部署副本不独立维护。**
-
-支持名为 `.sbproj` 或 `game.sbproj` 的项目文件，目标目录须只有一份项目配置。1.1 安装器参考 Godot 安装流程（`a04957c`）补上本地修改保护、只检查、安装预演和实际编辑器验证。`Check` 与 `DryRun` 不写项目；已安装文件有本地改动，或存在来源不明的额外文件时，会拒绝覆盖。可在安装时加 `-Verify -Engine ...`，验证编译、原生适配层和 MCP schema；失败会恢复部署、忽略规则和安装记录。已有打开的编辑器只在独立 `Verify` 时复用，不替用户关闭它。
-
-源仓库版本由调用方固定，安装器不获取或切换 Git。只检出 `Sbox/` 即可安装，不依赖 `Godot/`。
-
-内置示例位于插件 `Recipes/`；项目自己录制的教程写入 `Config/AIGuide/Recipes/`，由游戏项目自己的版本控制管理，同名教程优先使用项目版本。本机端口、令牌、会话和安装来源记录在 `.ai_guide/`，不共享。
-
-安装后重启编辑器，从顶部 `AI Guide → 教程与状态` 打开。HTTP MCP 默认地址是 `http://127.0.0.1:7660/mcp`。
+主项目若保留历史部署副本，可在自己的 `Metadata.Compiler.IgnoreFolders` 中排除 `AIGuide` / `AIDebug`；Library 采用独立编译配置。更新插件前保存并关闭编辑器，完成 Verso 更新后重新打开。修改插件请在原 Git 工作区或 Verso 依赖开发模式中进行，再升级主项目锁文件。
 
 ## 可选运行时调试
 
@@ -51,10 +38,10 @@ AIGuide/
 
 ```powershell
 & ./Sbox/Tools/Test-AIGuide.ps1 -Project 'C:/path/to/game'
-& ./Sbox/Tools/Test-Install.ps1
+& ./Sbox/Tools/Test-Compatibility.ps1 -Engine 'C:/path/to/sbox/game'
 ```
 
-集成测试连接已打开项目的编辑器，请使用专用验证实例和测试地图；它会操作界面与演练回退。用 `-SkipHammer` 仅验证通用功能。安装器测试独立运行，不启动编辑器。
+集成测试连接已打开项目的编辑器，请使用专用验证实例和测试地图；它会操作界面与演练回退。用 `-SkipHammer` 仅验证通用功能。SDK 兼容检查由维护者运行，不属于日常使用步骤。
 
 重建原生适配层时明确指定引擎 Qt DLL 目录：
 
@@ -66,4 +53,4 @@ AIGuide/
 
 它针对 Windows x64 和已验证的 Facepunch/Valve Qt ABI，加载前核对二进制。头文件和分配器接口有变化时需先适配再重建。
 
-详见 [使用手册与架构](docs/使用手册/AI%20Guide编辑器插件.md)。Hammer 删除原节点后的自动重建不在现有公开快照 API 的能力内，回退会明确报告未完成；这类操作需要原生 Undo。`ai_debug` 当前仅作功能参考。
+详见 [使用手册与架构](docs/使用手册/AI%20Guide编辑器插件.md)。Hammer 删除原节点后的自动重建不在现有公开快照 API 的能力内，回退会明确报告未完成；这类操作需要原生 Undo。AIDebug 以独立标准 Library 提供运行时调试。

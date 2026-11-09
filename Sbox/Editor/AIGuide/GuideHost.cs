@@ -15,7 +15,7 @@ namespace AIGuide.Sbox;
 /// <summary>Project editor plugin. Native UI continues to work inside Qt modal loops.</summary>
 public static class GuideHost
 {
-    public const string Version = "1.1.1";
+    public const string Version = "1.2.0";
     private static readonly ConcurrentQueue<Action> main = new();
     private static GuideTransport transport;
     private static string root;
@@ -27,6 +27,9 @@ public static class GuideHost
     private static JsonObject lastGuide;
     private static bool restartPending;
     internal static string Root => root ?? Path.GetFullPath(Project.Current.GetRootPath());
+    internal static string LibraryRoot => EditorUtility.Projects.GetAll()
+        .FirstOrDefault(p => p.Config.FullIdent == "railgunhamster.aiguide")?.GetRootPath()
+        ?? throw new DirectoryNotFoundException("AI Guide library is missing. Finish the Verso project update before opening the editor.");
     internal static string Data => Path.Combine(Root, ".ai_guide");
     internal static JsonObject Config { get; private set; } = new();
     public static string Address => $"http://127.0.0.1:{Config.I("port",7660)}/mcp";
@@ -54,7 +57,7 @@ public static class GuideHost
                 transport?.Dispose(); transport=null; root=current; Directory.CreateDirectory(Data);
                 var path=Path.Combine(Data,"config.json");
                 Config=File.Exists(path)?JsonNode.Parse(File.ReadAllText(path)).AsObject():new JsonObject { ["enabled"]=true,["port"]=7660 };
-                GuideNative.Load(root);
+                GuideNative.Load(LibraryRoot, root);
                 if(Config.B("enabled",true)) { transport=new GuideTransport(Config.I("port",7660)); transport.Start(); }
                 File.WriteAllText(Path.Combine(Data,"session.json"),new JsonObject { ["pid"]=Environment.ProcessId,["url"]=Address,["version"]=Version,["project"]=root }.ToJsonString());
                 initializationError=null;
@@ -87,7 +90,7 @@ public static class GuideHost
     }
     internal static JsonNode EditorState()=>new JsonObject { ["version"]=Version,["project"]=Root,["editor"]=Context(),["ui"]=GuideNative.Call("state"),["native"]=GuideNative.Call("info"),["transport"]=Address,["rehearsing"]=rehearsal!=null };
     private static string RecipeDir=>Path.Combine(Root,"Config","AIGuide","Recipes");
-    private static string BuiltInRecipeDir=>Path.Combine(Root,"Editor","AIGuide","Recipes");
+    private static string BuiltInRecipeDir=>Path.Combine(LibraryRoot,"Editor","AIGuide","Recipes");
     private static string RecipePath(string name)
     {
         if(string.IsNullOrWhiteSpace(name)||name.IndexOfAny(Path.GetInvalidFileNameChars())>=0||name.Contains("..")||name.Contains('/')||name.Contains('\\'))throw new ArgumentException("Recipe name must be one file name without an extension or path.");

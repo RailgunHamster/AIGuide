@@ -1,20 +1,18 @@
 # AI Guide 编辑器插件使用手册
 
-插件源码、内置教程、测试、通用手册统一由现有 RailgunHamster/AIGuide Git 仓库的 `Sbox/` 管理。游戏项目的 `Editor/AIGuide/` 是安装生成的副本，不单独提交到 Lore；项目教程位于 `Config/AIGuide/Recipes/`，继续由项目版本控制管理。
+插件源码、内置教程、测试、通用手册统一由现有 RailgunHamster/AIGuide Git 仓库的 `Sbox/` 管理。游戏项目的 `Libraries/AIGuide/` 是 Verso 管理的标准 Library 快照，不单独作为游戏文件提交 Lore；项目教程位于 `Config/AIGuide/Recipes/`，继续由项目版本控制管理。
 
 AI Guide 让本地 AI 读取编辑器界面、操作控件、标出按钮，并把操作整理成玩家自己完成的分步教程。它运行在目标项目的 s&box 编辑器中，覆盖场景编辑器与同一进程内的 Hammer 原生 Qt 界面。
 
-这是根据 Godot 模块的功能重新实现的 s&box 插件。Godot 的场景节点、EditorInterface、GDScript、引擎补丁没有直接搬过来。`ai_debug` 当前仅供设计参考，尚未作为完成品接入。
+这是根据 Godot 模块的功能重新实现的 s&box 插件。Godot 的场景节点、EditorInterface、GDScript、引擎补丁没有直接搬过来。AIDebug 作为独立标准 Library 可选接入，AI Guide 可转发已激活的调试服务。
 
 ## 1. 安装、启动与配置
 
-团队项目若已提供自动加载入口，策划、美术只需从项目版本控制获取完整更新后打开项目；插件应自动出现，无需运行下面的开发者安装命令。插件本身不要求修改官方引擎。Windows x64 / Qt 5.15.2 的已验证组合记录在 `Native/BuildInfo.json`，包括 Steam 官方 `26.10.27c`、当前 LTN 构建与 railgunhamster 的旧 Qt。
+团队项目将原 Git 仓库的 `Sbox/` 通过 Verso 依赖映射到 `Libraries/AIGuide/`，其中 `.sbproj` 声明标准 Library。成员获取完整更新后打开编辑器即可使用，无需脚本、IDE 或手动设置。s&box 自动编译 Library 自己的 `Editor/`。复制安装器和编辑器内自更新已移除。
 
-托管接口按能力探测：优先使用公共 `MapNode.NodeId` 和 `Hammer.HasUnsavedChanges`，旧 SDK 使用其已有的适配接口；最旧封装的节点身份只在当前文档生命周期内使用，不持久化进教程。无法读取的修改标记表示未知，不冒充“未修改”。不同引擎不再因为缺少这些便利成员而拒绝编译整个插件。
+原生适配 DLL 位于 Library 内的 `Editor/AIGuide/Native/`，与 `BuildInfo.json` 一同提供。加载时检查 DLL 哈希及 Qt 模块组合，运行缓存写主项目 `.ai_guide/`。兼容 Steam 官方 `26.10.27c`、LTN 当前构建和已验证的 railgunhamster 旧 Qt；缺少便利成员的旧 SDK 通过能力适配。
 
-关闭目标项目的编辑器，在 AIGuide Git 仓库执行 `Sbox/Install.ps1 -Project <项目目录>`，再用对应 s&box 引擎打开项目。C# 随项目编译；原生适配层是 `Editor/AIGuide/Native/aiguide_qt5.dll`。不用重新编译引擎。
-
-1.1 安装器提供 `-Action Check` 和 `-DryRun`（只检查，不修改项目），以及 `-Action Verify -Engine <引擎game目录>`（实际检查编译、Qt 适配层和 MCP）。安装时附加 `-Verify -Engine ...`，验证失败会恢复部署、忽略规则和安装记录。更新前对照安装摘要检查本地改动，不再通过备份后强行覆盖定制代码。支持目标目录中唯一的 `.sbproj` 或任意名称的 `*.sbproj`；安装器不切换源码 Git 版本。
+项目教程仍位于 `Config/AIGuide/Recipes/`，同名教程覆盖内置示例。旧项目部署目录可由主项目自己的 `Metadata.Compiler.IgnoreFolders` 排除；Library 使用独立编译配置。更新前保存并关闭编辑器，由 Verso 完成依赖获取后再打开，避免进程驻留原生模块继续使用旧版本。
 
 进入 `编辑器顶部 AI Guide → 教程与状态` 可查看 MCP 地址、启动已保存教程、停止引导。另有“复制 MCP 地址”和“停止引导”菜单。
 
@@ -223,7 +221,7 @@ flowchart LR
 
 在专门用于验证的编辑器实例中用 PowerShell 7（`pwsh`）运行 AIGuide 仓库的 `Sbox/Tools/Test-AIGuide.ps1 -Project <项目目录>`。它创建原生测试窗口，测试输入、虚拟条目、模态框、教程、文件/场景回退、配方和文件桥。结果写入 `Art/build/aiguide-tests/results.json`。只测通用功能可加 `-SkipHammer`；Hammer 验证另需打开一张专用测试地图。
 
-安装器的独立文件系统测试用 `Sbox/Tools/Test-Install.ps1`，验证全新安装、来源记录、自定义教程迁移、旧文件备份、重复安装和冲突保护。它不会启动编辑器；测试目录保留在本仓库忽略的 `Sbox/Art/build/installer-tests/` 下。
+使用 `Sbox/Tools/Test-Compatibility.ps1` 验证维护者指定的 SDK；使用专用项目执行真实界面测试。普通用户直接通过 Verso 获取标准 Library。
 
 兼容性检查使用 `Sbox/Tools/Test-Compatibility.ps1 -Engine <官方引擎目录>,<自定义引擎目录>`，执行旧/新接口适配检查、Qt 组合拒绝检查，并分别针对两套 SDK 编译完整插件；`-LegacyTools <旧版托管DLL目录>` 可增加旧 SDK 编译。2026-11-09：官方 SDK、自定义 SDK、railgunhamster 旧 SDK 均编译通过；官方编辑器和使用旧 Qt 的隔离编辑器各通过 25 项集成检查。跨机器实际编辑会话未被改动。
 

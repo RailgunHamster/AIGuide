@@ -2,8 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string[]]$Engine,
-    [string]$LegacyTools,
-    [string]$BootstrapProject
+    [string]$LegacyTools
 )
 $ErrorActionPreference='Stop'
 $package=(Resolve-Path "$PSScriptRoot/..").Path
@@ -33,7 +32,6 @@ foreach($target in $targets){
         '<Reference Include="'+(Xml $file.BaseName)+'"><HintPath>'+(Xml $path)+'</HintPath><Private>false</Private></Reference>'
     }
     $sources=@('<Compile Include="'+(Xml "$package/Editor/AIGuide/*.cs")+'" />')
-    if($BootstrapProject){foreach($file in @('AIGuideBootstrap.cs','AIGuideDeployment.cs')){$sources+='<Compile Include="'+(Xml "$BootstrapProject/Editor/$file")+'" />'}}
     @"
 <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>$common<AssemblyName>AIGuide.Compatibility.$index</AssemblyName></PropertyGroup><ItemGroup>
 <Using Include="Sandbox.Internal.GlobalToolsNamespace" Static="true" />
