@@ -66,6 +66,9 @@ QString textOf(QWidget*w){
 bool own(QWidget*w){for(auto p=w;p;p=p->parentWidget())if(p->property("aiguideOwn").toBool())return true;return false;}
 QString propertyOf(QWidget*w){for(auto p=w;p;p=p->parentWidget())for(auto key:{"aiguideProperty","propertyName","property"})if(p->property(key).isValid()&&!p->property(key).toString().isEmpty())return p->property(key).toString();return {};}
 QString valueOf(QWidget*w){for(auto p=w;p;p=p->parentWidget())if(p->property("aiguideValue").isValid())return p->property("aiguideValue").toString();return w->property("value").toString();}
+QString uiLabel(QString text){return text.section('\t',0,0).replace(QChar(0x2026),"...").remove('&').trimmed();}
+QString contentText(QString text){return text.replace('\\','/').remove(QRegularExpression("\\s+"));}
+bool hasLabel(QWidget*w,QString wanted){for(auto label:w->findChildren<QLabel*>())if(uiLabel(label->text())==uiLabel(wanted))return true;return false;}
 struct Element {
     QPointer<QWidget> w; QPersistentModelIndex index; QPointer<QAction> action;
     QString kind="control"; int item=-1; quintptr graphic=0;
@@ -107,24 +110,24 @@ public:
     Overlay(QWidget*p):QWidget(p,Qt::Tool|Qt::FramelessWindowHint|Qt::WindowTransparentForInput|Qt::WindowDoesNotAcceptFocus){setProperty("aiguideOwn",true);setAttribute(Qt::WA_TransparentForMouseEvents);setAttribute(Qt::WA_ShowWithoutActivating);setAttribute(Qt::WA_TranslucentBackground);setFocusPolicy(Qt::NoFocus);}
     void showEvent(QShowEvent*e)override{++showCount;auto hwnd=reinterpret_cast<HWND>(internalWinId());if(hwnd)SetWindowLongPtrW(hwnd,GWL_EXSTYLE,GetWindowLongPtrW(hwnd,GWL_EXSTYLE)|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT);QWidget::showEvent(e);}
     void hideEvent(QHideEvent*e)override{++hideCount;QWidget::hideEvent(e);}
-    void paintEvent(QPaintEvent*)override{
-        ++paintCount;
-        QPainter p(this);p.setRenderHint(QPainter::Antialiasing);
+    void draw(QPainter&p){
+        p.setRenderHint(QPainter::Antialiasing);
         if(dim){QPainterPath path;path.addRect(rect());for(auto&m:marks)path.addRoundedRect(QRectF(mapFromGlobal(m.first.topLeft()),m.first.size()).adjusted(-4,-4,4,4),5,5);path.setFillRule(Qt::OddEvenFill);p.fillPath(path,QColor(0,0,0,115));}
-        for(auto&m:marks){QRect r(mapFromGlobal(m.first.topLeft()),m.first.size());p.setPen(QPen(QColor("#ffb74d"),3));p.setBrush(Qt::NoBrush);p.drawRoundedRect(r.adjusted(-3,-3,3,3),4,4);if(!m.second.isEmpty()){QRect tag(r.topLeft()-QPoint(0,23),QSize(qMax(28,m.second.size()*9),22));p.fillRect(tag,QColor("#ffb74d"));p.setPen(Qt::black);p.drawText(tag,Qt::AlignCenter,m.second);}}
+        for(auto&m:marks){QRect r(mapFromGlobal(m.first.topLeft()),m.first.size());r=r.adjusted(-3,-3,3,3).intersected(rect().adjusted(3,3,-3,-3));if(r.isEmpty())continue;p.setPen(QPen(QColor("#ffb74d"),3));p.setBrush(Qt::NoBrush);p.drawRoundedRect(r,4,4);if(!m.second.isEmpty()){QRect tag(QPoint(qMax(3,r.left()),qMax(3,r.top()-23)),QSize(qMax(28,m.second.size()*9),22));p.fillRect(tag,QColor("#ffb74d"));p.setPen(Qt::black);p.drawText(tag,Qt::AlignCenter,m.second);}}
     }
+    void paintEvent(QPaintEvent*)override{++paintCount;QPainter p(this);draw(p);}
 };
 class Bridge:public QObject {
 public:
     QHash<QObject*,int> ids;QHash<QString,Element> refs;int seq=0;
-    QSet<const QEvent*> synthetic;QJsonArray events,records,steps;QJsonObject context,lastGuide;
+    QSet<const QEvent*> synthetic;QJsonArray events,records,steps;QJsonObject context,lastGuide;QHash<QObject*,qint64> committedAt;
     QHash<QWidget*,QPointer<Overlay>> overlays;QPointer<QWidget>bubble;QPointer<QLabel>message;
-    QJsonArray highlights;QString markText,title,state="idle";int step=0;bool dim=true; qint64 markUntil=0,entered=0;bool preSatisfied=false,restartArmed=false;
+    QJsonArray highlights;QString markText,title,state="idle";int step=0;bool dim=true; qint64 markUntil=0,entered=0,pendingClick=0,nextFileCheck=0,nextScroll=0;int scrollTries=0;bool preSatisfied=false,manualConfirmation=false,restartArmed=false,fallbackUsed=false;QString targetError;QJsonObject currentTarget;
     QTimer timer;bool replay=false;int eventSequence=0,actionSequence=0;QHash<int,QJsonObject> actionResults;
-    QPointer<QWidget>fixture,hovered;
+    QPointer<QWidget>fixture,secondFixture,fileFixture,hovered,presentedWindow;bool activationSucceeded=false,dialogOverride=false,previousDialogPolicy=false,rehearsing=false;
     Bridge(){qApp->installEventFilter(this);connect(&timer,&QTimer::timeout,this,[this]{tick();});timer.start(80);}
     ~Bridge(){clear();}
-    QString ref(Element e){if(!e.w)return {};int id=ids.value(e.w,0);if(!id){id=++seq;ids[e.w]=id;connect(e.w,&QObject::destroyed,this,[this,obj=e.w.data()]{ids.remove(obj);});}QString r="e"+QString::number(id);if(e.kind!="control"){r+='.'+e.kind+':';if(e.index.isValid()){QStringList rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(QString::number(i.row()));r+=rows.join(',')+':'+QString::number(e.index.column());}else if(e.action)r+=QString::number(quintptr(e.action.data()),16);else r+=QString::number(e.graphic?e.graphic:e.item);}refs[r]=e;return r;}
+    QString ref(Element e){if(!e.w)return {};int id=ids.value(e.w,0);if(!id){id=++seq;ids[e.w]=id;connect(e.w,&QObject::destroyed,this,[this,obj=e.w.data()]{ids.remove(obj);committedAt.remove(obj);});}QString r="e"+QString::number(id);if(e.kind!="control"){r+='.'+e.kind+':';if(e.index.isValid()){QStringList rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(QString::number(i.row()));r+=rows.join(',')+':'+QString::number(e.index.column());}else if(e.action)r+=QString::number(quintptr(e.action.data()),16);else r+=QString::number(e.graphic?e.graphic:e.item);}refs[r]=e;return r;}
     QList<QWidget*> roots(){auto list=qApp->topLevelWidgets();list.erase(std::remove_if(list.begin(),list.end(),[](QWidget*w){return own(w)||w->windowType()==Qt::ToolTip;}),list.end());std::sort(list.begin(),list.end(),[](QWidget*a,QWidget*b){return (QString(a->metaObject()->className())+a->windowTitle())<(QString(b->metaObject()->className())+b->windowTitle());});return list;}
     QVector<Element> elements(QWidget*root=nullptr,int maxItems=40){
         QVector<Element> out;QList<QWidget*> pending=root?QList<QWidget*>{root}:roots();QSet<QWidget*>seen;
@@ -140,17 +143,65 @@ public:
         }return out;
     }
     QJsonObject identity(QWidget*w){QJsonObject o{{"class",w->metaObject()->className()},{"name",w->objectName()}};int nth=0;auto siblings=w->parentWidget()?w->parentWidget()->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly):roots();for(auto s:siblings){if(s==w)break;if(QString(s->metaObject()->className())==QString(w->metaObject()->className())&&s->objectName()==w->objectName())nth++;}o["nth"]=nth;return o;}
-    QString locator(Element e){QJsonArray path;for(auto p=e.w.data();p;p=p->parentWidget())path.prepend(identity(p));QJsonObject o{{"path",path},{"kind",e.kind},{"text",e.label()}};if(e.index.isValid()){QJsonArray rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(i.row());o["rows"]=rows;o["column"]=e.index.column();}if(e.kind=="tab")o["item"]=e.item;return "/qt/"+QJsonDocument(o).toJson(QJsonDocument::Compact).toBase64(QByteArray::Base64UrlEncoding|QByteArray::OmitTrailingEquals);}
+    QString locator(Element e){QJsonArray path;for(auto p=e.w.data();p;p=p->parentWidget())path.prepend(identity(p));QJsonObject o{{"path",path},{"kind",e.kind},{"text",e.label()}};if(qobject_cast<QLineEdit*>(e.w.data())){auto semantic=fallbackFor(e);if(!semantic.isEmpty())o["semantic"]=semantic;}if(e.index.isValid()){QJsonArray rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(i.row());o["rows"]=rows;o["column"]=e.index.column();}if(e.kind=="tab")o["item"]=e.item;return "/qt/"+QJsonDocument(o).toJson(QJsonDocument::Compact).toBase64(QByteArray::Base64UrlEncoding|QByteArray::OmitTrailingEquals);}
     bool segment(QWidget*w,QJsonObject s){return QString(w->metaObject()->className())==str(s,"class")&&w->objectName()==str(s,"name")&&(!s.contains("text")||textOf(w).left(100)==str(s,"text"));}
-    Element locate(QString value){auto doc=QJsonDocument::fromJson(QByteArray::fromBase64(value.mid(4).toLatin1(),QByteArray::Base64UrlEncoding));auto spec=doc.object();auto path=spec["path"].toArray();QWidget*w=nullptr;for(auto v:path){QList<QWidget*> candidates=w?w->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly):roots();auto s=v.toObject();int n=0;QWidget*next=nullptr;for(auto c:candidates)if(segment(c,s)&&n++==num(s,"nth")){next=c;break;}if(!next)return {};w=next;}if(!w)return {};QString kind=str(spec,"kind","control");if(kind=="control")return Element{w};auto all=elements(w,2000);QVector<Element>matches;for(auto e:all)if(e.w==w&&e.kind==kind&&e.label()==str(spec,"text"))matches.append(e);if(matches.size()==1)return matches[0];for(auto e:matches){if(kind=="tab"&&e.item==num(spec,"item"))return e;if(kind=="tree"){QJsonArray rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(i.row());if(rows==spec["rows"].toArray()&&e.index.column()==num(spec,"column"))return e;}}return {};}
-    bool match(Element e,QJsonObject q){if(!e.w)return false;auto contains=[&](QString have,QString want){return want.isEmpty()||(yes(q,"exact")?have==want:have.contains(want,Qt::CaseInsensitive));};return contains(e.label(),str(q,"text"))&&(str(q,"class").isEmpty()||contains(e.w->metaObject()->className(),str(q,"class"))||e.w->managedClassNames.contains(str(q,"class")))&&(str(q,"name").isEmpty()||e.w->objectName()==str(q,"name"))&&contains(e.w->toolTip(),str(q,"tooltip"))&&(str(q,"kind","any")=="any"||e.kind==str(q,"kind"))&&(!yes(q,"visible_only",true)||e.visible())&&contains(propertyOf(e.w),str(q,"property"));}
-    Element resolve(QJsonValue target){
+    Element locate(QString value){auto doc=QJsonDocument::fromJson(QByteArray::fromBase64(value.mid(4).toLatin1(),QByteArray::Base64UrlEncoding));auto spec=doc.object();auto path=spec["path"].toArray();QWidget*w=nullptr;for(auto v:path){QList<QWidget*> candidates=w?w->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly):roots();auto s=v.toObject();int n=0;QWidget*next=nullptr;for(auto c:candidates)if(segment(c,s)&&n++==num(s,"nth")){next=c;break;}if(!next)return {};w=next;}if(!w)return {};QString kind=str(spec,"kind","control");if(kind=="control"){if(spec.contains("semantic")){try{if(resolve(spec["semantic"],true).w!=w)return {};}catch(...){return {};}}return Element{w};}auto all=elements(w,2000);QVector<Element>matches;for(auto e:all)if(e.w==w&&e.kind==kind&&e.label()==str(spec,"text"))matches.append(e);if(matches.size()==1)return matches[0];for(auto e:matches){if(kind=="tab"&&e.item==num(spec,"item"))return e;if(kind=="tree"){QJsonArray rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(i.row());if(rows==spec["rows"].toArray()&&e.index.column()==num(spec,"column"))return e;}}return {};}
+    bool match(Element e,QJsonObject q){if(!e.w)return false;auto contains=[&](QString have,QString want){return want.isEmpty()||(yes(q,"exact")?have==want:have.contains(want,Qt::CaseInsensitive));};auto label=e.label().trimmed(),wanted=str(q,"text").trimmed();if(e.kind=="menu"){label=uiLabel(label);wanted=uiLabel(wanted);}return contains(label,wanted)&&(str(q,"class").isEmpty()||contains(e.w->metaObject()->className(),str(q,"class"))||e.w->inherits(str(q,"class").toUtf8().constData())||e.w->managedClassNames.contains(str(q,"class")))&&(str(q,"name").isEmpty()||e.w->objectName()==str(q,"name"))&&contains(e.w->toolTip(),str(q,"tooltip"))&&(str(q,"kind","any")=="any"||e.kind==str(q,"kind"))&&(!yes(q,"visible_only",true)||e.visible())&&contains(propertyOf(e.w),str(q,"property"))&&(str(q,"label").isEmpty()||hasLabel(e.w,str(q,"label")));}
+    Element resolve(QJsonValue target,bool includeHidden=false){
         if(target.isString()){auto s=target.toString();if(s.startsWith("/qt/"))return locate(s);if(refs.contains(s)){auto e=refs.value(s);if(e.alive())return e;return {};}target=QJsonObject{{"text",s}};}
         if(!target.isObject())return {};
-        auto q=target.toObject();QWidget*under=nullptr;if(q.contains("under"))under=resolve(q["under"]).w;
+        auto q=target.toObject();if(includeHidden)q["visible_only"]=false;QWidget*under=nullptr;if(q.contains("under")){under=resolve(q["under"],includeHidden||!yes(q,"visible_only",true)).w;if(!under)return {};}
         QVector<Element>matches;for(auto e:elements(under,2000))if(match(e,q))matches.append(e);
+        // Keep offscreen fields resolvable, while preferring the active document/tab.
+        if(includeHidden&&matches.size()>1){QVector<Element>shown;for(auto e:matches)if(e.w->isVisible())shown.append(e);if(!shown.isEmpty())matches=shown;}
         if(matches.size()==1)return matches[0];
         if(matches.size()>1){QVector<Element>exact;for(auto e:matches)if(e.label().remove('&')==str(q,"text"))exact.append(e);if(exact.size()==1)return exact[0];throw std::runtime_error(QString("Ambiguous UI target (%1 matches); use ui_find then ref or locator").arg(matches.size()).toStdString());}return {};
+    }
+    Element stepTarget(QJsonObject s){
+        targetError.clear();fallbackUsed=false;Element e;
+        try{e=resolve(s["target"],true);}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}
+        if(!e.w&&s.contains("fallback")){try{e=resolve(s["fallback"],true);fallbackUsed=bool(e.w);}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}}
+        if(e.w)targetError.clear();else if(targetError.isEmpty())targetError="目标尚未出现";
+        return e;
+    }
+    void scrollIntoView(Element e){
+        if(e.index.isValid()){if(auto v=qobject_cast<QAbstractItemView*>(e.w.data()))v->scrollTo(e.index);return;}
+        for(auto p=e.w->parentWidget();p;p=p->parentWidget())if(auto area=qobject_cast<QAbstractScrollArea*>(p)){
+            auto at=area->viewport()->mapFromGlobal(e.rect().center());auto bounds=area->viewport()->rect();
+            if(!bounds.contains(at)){area->verticalScrollBar()->setValue(area->verticalScrollBar()->value()+at.y()-bounds.center().y());area->horizontalScrollBar()->setValue(area->horizontalScrollBar()->value()+at.x()-bounds.center().x());}
+        }
+    }
+    void dialogPolicy(){
+        bool active=state=="running"||rehearsing;
+        if(active&&!dialogOverride){previousDialogPolicy=QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs,true);dialogOverride=true;}
+        else if(!active&&dialogOverride){QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs,previousDialogPolicy);dialogOverride=false;}
+    }
+    QString projectFile(QString relative){auto root=QDir::cleanPath(QDir::fromNativeSeparators(str(context,"project")));auto path=QDir::cleanPath(QDir(root).absoluteFilePath(relative));if(root.isEmpty()||!path.startsWith(root+"/",Qt::CaseInsensitive))throw std::runtime_error("Tutorial project_path must stay inside the current project");return path;}
+    QWidget*scopeWindow(QJsonValue target){if(!target.isObject())return nullptr;auto q=target.toObject();if(q.contains("under")){try{auto e=resolve(q["under"],true);if(e.w)return e.w->window();}catch(...){}return scopeWindow(q["under"]);}return nullptr;}
+    void present(QWidget*window,bool force=false){
+        if(!window||own(window)||(!force&&presentedWindow==window)||!yes(lastGuide,"activate_window",true))return;
+        if(auto modal=qApp->activeModalWidget())if(modal!=window&&!modal->isAncestorOf(window))return;
+        if(auto popup=qApp->activePopupWidget())if(popup!=window&&!window->isAncestorOf(popup))return;
+        if(window->isMinimized())window->showNormal();else if(!window->isVisible())window->show();
+        window->raise();window->activateWindow();
+        auto hwnd=reinterpret_cast<HWND>(window->internalWinId());activationSucceeded=window->isActiveWindow();
+        if(hwnd){SetForegroundWindow(hwnd);activationSucceeded=GetForegroundWindow()==hwnd;if(!activationSucceeded){FLASHWINFO info{sizeof(FLASHWINFO),hwnd,FLASHW_TRAY,2,0};FlashWindowEx(&info);}}
+        presentedWindow=window;
+        log({{"event","window_presented"},{"window",window->windowTitle()},{"active",activationSucceeded},{"index",step}});
+    }
+    QJsonObject fallbackFor(Element e){
+        if(!e.w)return {};auto root=e.w->window();while(qobject_cast<QMenu*>(root)&&root->parentWidget())root=root->parentWidget()->window();
+        QJsonObject scope{{"class",root->metaObject()->className()},{"kind","control"}},q{{"class",e.w->metaObject()->className()},{"kind",e.kind},{"under",scope}};
+        if(e.w==root&&e.kind=="control")q=scope;
+        else if(!e.w->objectName().isEmpty())q["name"]=e.w->objectName();
+        else if(qobject_cast<QLineEdit*>(e.w.data())){
+            for(auto p=e.w->parentWidget();p&&p!=root;p=p->parentWidget())if(p->inherits("CQTextureControl")||p->inherits("CQSliderControl")){
+                auto labels=p->findChildren<QLabel*>();for(auto label:labels)if(!uiLabel(label->text()).isEmpty()&&label->text().size()<80){q["class"]="QLineEdit";q["under"]=QJsonObject{{"class",p->metaObject()->className()},{"label",uiLabel(label->text())},{"under",scope}};break;}break;
+            }
+        }else if(qobject_cast<QPushButton*>(e.w.data())&&e.w->parentWidget()&&e.w->parentWidget()->inherits("CQFeaturesWindow")){q["under"]=QJsonObject{{"class","CQFeaturesWindow"},{"under",scope}};}
+        else if(!e.label().isEmpty())q["text"]=e.kind=="menu"?uiLabel(e.label()):e.label();
+        try{auto found=resolve(q,true);if(found.w==e.w&&found.kind==e.kind)return q;}catch(...){}
+        return {};
     }
     QJsonObject describe(Element e){if(!e.alive())return {{"ok",false},{"error","Target not found"}};QJsonArray why;
         for(auto p=e.w.data();p;p=p->parentWidget())if(auto stack=qobject_cast<QStackedWidget*>(p->parentWidget()))if(stack->currentWidget()!=p)why.append(QJsonObject{{"type","inactive_tab"},{"container",ref(Element{stack})}});
@@ -161,9 +212,10 @@ public:
     void log(QJsonObject o){o["at"]=QDateTime::currentMSecsSinceEpoch();o["seq"]=++eventSequence;events.append(o);while(events.size()>100)events.removeFirst();}
     bool eventFilter(QObject*obj,QEvent*event)override{
         auto w=qobject_cast<QWidget*>(obj);if(!w||own(w))return false;
+        if(qobject_cast<QLineEdit*>(w)&&(event->type()==QEvent::FocusOut||(event->type()==QEvent::KeyRelease&&(static_cast<QKeyEvent*>(event)->key()==Qt::Key_Return||static_cast<QKeyEvent*>(event)->key()==Qt::Key_Enter)))){ref(Element{w});committedAt[w]=QDateTime::currentMSecsSinceEpoch();}
         bool agent=synthetic.contains(event);
-        if(event->type()==QEvent::MouseButtonRelease){auto m=static_cast<QMouseEvent*>(event);if(m->button()==Qt::LeftButton){Element clicked{w};log({{"event","click"},{"agent",agent},{"target",describe(clicked)},{"x",m->globalPos().x()},{"y",m->globalPos().y()}});if(!agent&&state=="running"&&step<steps.size()){auto s=steps[step].toObject();try{auto e=resolve(s["target"]);if(e.w&&e.visible()&&e.rect().adjusted(-3,-3,3,3).contains(m->globalPos())&&(!s.contains("until")||s["until"].isNull()||s["until"].toString()=="click"||preSatisfied))advance("click");}catch(...){} }}}
-        if(event->type()==QEvent::KeyPress){auto k=static_cast<QKeyEvent*>(event);QString key=QKeySequence(k->modifiers()|k->key()).toString(QKeySequence::PortableText).toLower();log({{"event","key"},{"keys",key},{"agent",agent}});if(!agent&&state=="running"&&step<steps.size()){auto until=steps[step].toObject()["until"];if(keyCondition(until,key))advance("key");}}
+        if(event->type()==QEvent::MouseButtonRelease){auto m=static_cast<QMouseEvent*>(event);if(m->button()==Qt::LeftButton){Element clicked{w};bool onTarget=false;if(state=="running"&&step<steps.size()){auto s=steps[step].toObject();auto e=stepTarget(s);onTarget=e.w&&e.visible()&&e.rect().adjusted(-3,-3,3,3).contains(m->globalPos())&&(w->window()==e.w->window());if(!agent&&onTarget&&(!s.contains("until")||s["until"].isNull()||s["until"].toString()=="click"||manualConfirmation))pendingClick=QDateTime::currentMSecsSinceEpoch();}log({{"event","click"},{"agent",agent},{"on_target",onTarget},{"target",describe(clicked)},{"x",m->globalPos().x()},{"y",m->globalPos().y()}});}}
+        if(event->type()==QEvent::KeyPress){auto k=static_cast<QKeyEvent*>(event);QString key=QKeySequence(k->modifiers()|k->key()).toString(QKeySequence::PortableText).toLower();log({{"event","key"},{"keys",key},{"agent",agent}});if(!agent&&state=="running"&&step<steps.size()){auto until=steps[step].toObject()["until"];if(keyCondition(until,key))pendingClick=QDateTime::currentMSecsSinceEpoch();}}
         return false;
     }
     bool keyCondition(QJsonValue u,QString key){auto o=u.toObject();if(str(o,"key").toLower()==key)return true;for(auto a:o["any"].toArray())if(keyCondition(a,key))return true;return false;}
@@ -220,37 +272,45 @@ public:
         if(!QStringList{"click","double_click","right_click","middle_click","hover","scroll","drag","type","paste","key","focus"}.contains(action))throw std::runtime_error("Unknown UI action");
         // Defer delivery so modal exec() cannot block this RPC's response.
         QTimer::singleShot(yes(a,"show")?350:0,qApp,work);
-        QJsonObject record=a;if(e.w){record["target"]=locator(e);record["target_info"]=describe(e);}record["at"]=QDateTime::currentMSecsSinceEpoch();records.append(record);
+        QJsonObject record=a;if(e.w){record["target"]=locator(e);record["target_info"]=describe(e);auto fallback=fallbackFor(e);if(!fallback.isEmpty())record["fallback"]=fallback;}record["at"]=QDateTime::currentMSecsSinceEpoch();records.append(record);
         while(actionResults.size()>200)actionResults.remove(actionSequence-200);
         return {{"ok",true},{"queued",true},{"action_id",actionId},{"cursor_moved",false},{"record",record}};
     }
     bool condition(QJsonValue u){
         auto o=u.toObject();if(o.isEmpty())return false;
         for(auto c:o["any"].toArray())if(condition(c))return true;
-        for(auto kind:{"exists","visible"})if(o.contains(kind)){auto target=o[kind];if(target.isObject()){auto q=target.toObject();q["visible_only"]=false;target=q;}auto e=resolve(target);return e.w&&(QString(kind)=="exists"||e.visible());}
-        if(o.contains("text_contains")){auto s=o["text_contains"].toObject();auto e=resolve(s["target"]);return e.w&&e.label().contains(str(s,"text"));}
+        if(o.contains("all")){auto conditions=o["all"].toArray();if(conditions.isEmpty())return false;for(auto c:conditions)if(!condition(c))return false;return true;}
+        if(o.contains("not"))return !condition(o["not"]);
+        for(auto kind:{"exists","visible"})if(o.contains(kind)){auto e=resolve(o[kind],QString(kind)=="exists");return e.w&&(QString(kind)=="exists"||e.visible());}
+        for(auto kind:{"text_contains","text_equals","number_equals","tooltip_contains"})if(o.contains(kind)){auto s=o[kind].toObject();auto e=resolve(s["target"],true);if(!e.w||(yes(s,"committed")&&committedAt.value(e.w,0)<entered))return false;if(QString(kind)=="number_equals"){bool ok=false;double value=e.label().toDouble(&ok);return ok&&qAbs(value-s["value"].toDouble())<0.0001;}auto have=contentText(QString(kind)=="tooltip_contains"?e.w->toolTip():e.label()),want=contentText(str(s,"text"));return QString(kind)=="text_equals"?have==want:have.contains(want);}
+        if(o.contains("context")){auto s=o["context"].toObject();QJsonValue value=context;for(auto part:str(s,"path").split('.'))value=value.toObject()[part];if(value.isUndefined()||value.isNull())return false;return s.contains("equals")?value==s["equals"]:value.toString().contains(str(s,"contains"));}
         for(auto k:{"selected","inspecting"})if(o.contains(k)){for(auto v:context[k].toArray())if(v.toString()==o[k].toString())return true;return false;}
         if(o.contains("main_screen"))return context["main_screen"]==o["main_screen"];
         if(o.contains("file_saved")){
-            auto s=o["file_saved"].toObject();auto root=str(context,"project");if(root.isEmpty())return false;QList<QString> pending{root};
-            for(int i=0;i<pending.size();i++){QDir dir(pending[i]);for(auto info:dir.entryInfoList(QStringList{"*."+str(s,"ext")},QDir::Files|QDir::NoSymLinks)){if(info.lastModified().toMSecsSinceEpoch()<entered)continue;QFile f(info.absoluteFilePath());if(f.open(QIODevice::ReadOnly)&&(str(s,"contains").isEmpty()||QString::fromUtf8(f.readAll()).contains(str(s,"contains"))))return true;}
-                for(auto info:dir.entryInfoList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::NoSymLinks)){auto rel=QDir(root).relativeFilePath(info.absoluteFilePath());if(QStringList{".ai_guide",".ai_guide_bridge",".betterlore",".git",".sbox",".source2",".intermediate","obj","bin","node_modules"}.contains(info.fileName())||rel.startsWith("Art/build",Qt::CaseInsensitive)||rel.startsWith("Art/baseline",Qt::CaseInsensitive))continue;pending.append(info.absoluteFilePath());}}
+            auto now=QDateTime::currentMSecsSinceEpoch();if(now<nextFileCheck)return false;nextFileCheck=now+500;
+            auto s=o["file_saved"].toObject();auto root=QDir::fromNativeSeparators(str(context,"project"));if(root.isEmpty())return false;
+            auto saved=[&](QFileInfo info){if(info.isSymLink()||!info.isFile()||info.size()>32*1024*1024||info.lastModified().toMSecsSinceEpoch()<entered)return false;QFile f(info.absoluteFilePath());if(!f.open(QIODevice::ReadOnly))return false;if(str(s,"contains").isEmpty())return true;auto bytes=f.readAll();return contentText(QString::fromUtf8(bytes.constData(),bytes.size())).contains(contentText(str(s,"contains")));};
+            if(s.contains("path"))return saved(QFileInfo(projectFile(str(s,"path"))));
+            QList<QPair<QString,int>> pending{{root,0}};int files=0;
+            for(int i=0;i<pending.size()&&files<2000;i++){QDir dir(pending[i].first);for(auto info:dir.entryInfoList(QStringList{"*."+str(s,"ext")},QDir::Files|QDir::NoSymLinks)){++files;if(saved(info))return true;}
+                if(pending[i].second>=12)continue;for(auto info:dir.entryInfoList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::NoSymLinks)){auto rel=QDir(root).relativeFilePath(info.absoluteFilePath());if(info.fileName().startsWith('.')||QStringList{"Libraries","addons","obj","bin","node_modules"}.contains(info.fileName())||rel.startsWith("Art/build",Qt::CaseInsensitive)||rel.startsWith("Art/baseline",Qt::CaseInsensitive))continue;pending.append({info.absoluteFilePath(),pending[i].second+1});}}
             return false;
         }
         return false;
     }
-    void enterStep(){entered=QDateTime::currentMSecsSinceEpoch();preSatisfied=false;if(step<steps.size()){try{preSatisfied=condition(steps[step].toObject()["until"]);}catch(...){}auto s=steps[step].toObject();if(s.contains("clipboard"))qApp->clipboard()->setText(str(s,"clipboard"));}log({{"event","step_enter"},{"index",step}});}
-    void advance(QString why){if(state!="running")return;log({{"event","advanced"},{"index",step},{"how",why}});step++;if(step>=steps.size()){state="completed";clearOverlays();if(bubble)bubble->hide();}else enterStep();}
+    void enterStep(bool previous=false){dialogPolicy();entered=QDateTime::currentMSecsSinceEpoch();pendingClick=0;scrollTries=0;nextScroll=0;nextFileCheck=0;preSatisfied=false;manualConfirmation=previous;presentedWindow=nullptr;activationSucceeded=false;currentTarget={};targetError.clear();if(step<steps.size()){try{preSatisfied=condition(steps[step].toObject()["until"]);}catch(...){}manualConfirmation=manualConfirmation||preSatisfied;auto s=steps[step].toObject();if(s.contains("project_path"))qApp->clipboard()->setText(QDir::toNativeSeparators(projectFile(str(s,"project_path"))));else if(s.contains("clipboard"))qApp->clipboard()->setText(str(s,"clipboard"));}log({{"event","step_enter"},{"index",step}});}
+    void advance(QString why){if(state!="running")return;log({{"event","advanced"},{"index",step},{"how",why}});step++;if(step>=steps.size()){state="completed";dialogPolicy();clearOverlays();if(bubble)bubble->hide();}else enterStep();}
     void clearOverlays(){for(auto o:overlays)if(o)o->hide();}
-    void clear(){clearOverlays();if(bubble)bubble->hide();highlights={};state="stopped";}
+    void clear(){clearOverlays();if(bubble)bubble->hide();highlights={};state="stopped";dialogPolicy();}
     void bubbleFor(QWidget*window,QString text,QRect target){
-        if(!bubble||bubble->parentWidget()!=window){if(bubble)bubble->deleteLater();auto b=new QFrame(window,Qt::Tool|Qt::FramelessWindowHint);b->setProperty("aiguideOwn",true);b->setAttribute(Qt::WA_ShowWithoutActivating);b->setStyleSheet("QFrame{background:#202936;color:#ffffff;border:1px solid #ffb74d;border-radius:6px} QLabel{border:none} QPushButton{padding:5px;color:white;background:#394557;border:1px solid #657184}");auto l=new QVBoxLayout(b);auto label=new QLabel(b);label->setWordWrap(true);label->setMinimumWidth(270);label->setMaximumWidth(340);l->addWidget(label);message=label;auto row=new QHBoxLayout;for(auto pair:QVector<QPair<QString,QString>>{{"prev","上一步"},{"next","下一步"},{"restart","从头开始"},{"stop","退出"}}){auto btn=new QPushButton(pair.second,b);row->addWidget(btn);connect(btn,&QPushButton::clicked,this,[this,action=pair.first]{control(action,true);});}l->addLayout(row);bubble=b;}
+        if(!bubble||bubble->parentWidget()!=window){if(bubble)bubble->deleteLater();auto b=new QFrame(window,Qt::Tool|Qt::FramelessWindowHint);b->setProperty("aiguideOwn",true);b->setAttribute(Qt::WA_ShowWithoutActivating);b->setStyleSheet("QFrame{background:#202936;color:#ffffff;border:2px solid #ffb74d;border-radius:6px} QLabel{border:none} QPushButton{padding:5px;color:white;background:#394557;border:1px solid #657184}");auto l=new QVBoxLayout(b);auto label=new QLabel(b);label->setWordWrap(true);label->setMinimumWidth(290);label->setMaximumWidth(380);l->addWidget(label);message=label;auto row=new QHBoxLayout;for(auto pair:QVector<QPair<QString,QString>>{{"prev","上一步"},{"next","下一步"},{"locate","定位"},{"restart","从头开始"},{"stop","退出"}}){auto btn=new QPushButton(pair.second,b);row->addWidget(btn);connect(btn,&QPushButton::clicked,this,[this,action=pair.first]{control(action,true);});}l->addLayout(row);bubble=b;}
         if(message->text()!=text){message->setText(text);bubble->adjustSize();}QRect available=window->screen()->availableGeometry();QPoint p=target.isEmpty()?window->mapToGlobal(QPoint(20,40)):target.bottomRight()+QPoint(12,12);p.setX(qBound(available.left(),p.x(),qMax(available.left(),available.right()-bubble->width())));p.setY(qBound(available.top(),p.y(),qMax(available.top(),available.bottom()-bubble->height())));if(bubble->pos()!=p)bubble->move(p);if(!bubble->isVisible()){bubble->show();bubble->raise();}
     }
-    QJsonObject status(){return {{"state",state},{"title",title},{"index",step},{"step",step+1},{"total",steps.size()},{"steps",steps},{"log",events},{"waiting",state=="running"&&lastGuide["waiting"].toBool()},{"restart_armed",restartArmed}};}
+    QJsonObject status(){return {{"state",state},{"title",title},{"index",step},{"step",step+1},{"total",steps.size()},{"steps",steps},{"log",events},{"waiting",state=="running"&&lastGuide["waiting"].toBool()},{"target",currentTarget},{"target_error",targetError},{"fallback_used",fallbackUsed},{"pre_satisfied",preSatisfied},{"manual_confirmation",manualConfirmation},{"presented_window",presentedWindow?presentedWindow->windowTitle():QString()},{"activation_succeeded",activationSucceeded},{"restart_armed",restartArmed}};}
     QJsonObject control(QString action,bool human=false){
         if(action=="stop"){clear();return status();}if(action=="next")advance(human?"user_next":"agent_next");
-        else if(action=="prev"){step=qMax(0,step-1);state="running";enterStep();}
+        else if(action=="prev"){step=qMax(0,step-1);state="running";enterStep(true);}
+        else if(action=="locate"){if(state=="running"&&step<steps.size()){auto s=steps[step].toObject();auto e=stepTarget(s);present(e.w?e.w->window():scopeWindow(s["target"]),true);if(e.w)scrollIntoView(e);}return status();}
         else if(action=="restart"||action=="restart_clean"){if(human&&!restartArmed){restartArmed=true;log({{"event","restart_armed"}});}else {restartArmed=false;log({{"event","restart_requested"}});if(!human){step=0;state="running";enterStep();}}}
         else if(action=="do_step"){if(step>=steps.size())throw std::runtime_error("No current step");auto s=steps[step].toObject();auto a=s["action"].isObject()?s["action"].toObject():QJsonObject{{"action",str(s,"action","click")}};a["target"]=s["target"];act(a);advance("agent_did_step");}
         else if(action!="next")throw std::runtime_error("Unknown guide control");return status();
@@ -259,11 +319,14 @@ public:
         QVector<QPair<Element,QString>> marks;QWidget*root=nullptr;QString caption;
         if(markUntil>QDateTime::currentMSecsSinceEpoch())for(auto t:highlights){try{auto e=resolve(t);if(e.w){marks.append({e,QString::number(marks.size()+1)});root=e.w->window();}}catch(...){}}
         if(state=="running"&&step<steps.size()){
-            auto s=steps[step].toObject();Element e;try{e=resolve(s["target"]);if(!preSatisfied&&condition(s["until"])) {advance("condition");return;}}catch(...){}
-            if(e.w&&e.visible()){marks.append({e,QString::number(step+1)});root=e.w->window();lastGuide["waiting"]=false;}else{lastGuide["waiting"]=true;if(yes(lastGuide,"auto_scroll",true)&&e.index.isValid())if(auto v=qobject_cast<QAbstractItemView*>(e.w.data()))v->scrollTo(e.index);root=qApp->activeModalWidget()?qApp->activeModalWidget():qApp->activeWindow();}
+            auto now=QDateTime::currentMSecsSinceEpoch();if(pendingClick&&now-pendingClick>=120){advance("click");return;}
+            auto s=steps[step].toObject();auto e=stepTarget(s);currentTarget=describe(e);present(e.w?e.w->window():scopeWindow(s["target"]));
+            try{if(!manualConfirmation&&condition(s["until"])){advance("condition");return;}}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}
+            auto modal=qApp->activeModalWidget();bool blocked=e.w&&modal&&modal!=e.w->window()&&!modal->isAncestorOf(e.w);
+            if(e.w&&e.visible()&&!blocked){marks.append({e,QString::number(step+1)});root=e.w->window();lastGuide["waiting"]=false;}else{lastGuide["waiting"]=true;if(e.w&&!blocked&&yes(lastGuide,"auto_scroll",true)&&scrollTries<3&&now>=nextScroll){++scrollTries;nextScroll=now+300;scrollIntoView(e);}root=modal?modal:qApp->activeWindow();if(blocked){present(modal);marks.append({Element{modal},QString::number(step+1)});}}
             while(root&&own(root))root=root->parentWidget();
             if(root)root=root->window();
-            caption=QString("%1  %2/%3\n%4%5").arg(title).arg(step+1).arg(steps.size()).arg(str(s,"text")).arg(preSatisfied?"\n条件已满足，点击目标或下一步继续。":(!e.w||!e.visible()?"\n等待目标显露…":""));
+            caption=QString("%1  %2/%3\n%4%5").arg(title).arg(step+1).arg(steps.size()).arg(str(s,"text")).arg(blocked?"\n当前对话框阻挡目标，请先完成或取消它；教程会等待。":manualConfirmation?"\n当前条件已满足或已返回此步，点击高亮处或下一步继续。":(!e.w||!e.visible()?"\n等待目标显露… "+targetError:""));
         }else if(!marks.isEmpty())caption=markText;
         QHash<QWidget*,QVector<QPair<QRect,QString>>> grouped;
         for(auto mark:marks)if(mark.first.visible())grouped[mark.first.w->window()].append({mark.first.rect(),mark.second});
@@ -282,6 +345,10 @@ public:
         if(root&&!own(root)&&!caption.isEmpty())bubbleFor(root,caption,marks.isEmpty()?QRect():marks.last().first.rect());else if(bubble)bubble->hide();
     }
     QJsonValue call(QString command,QJsonObject a){
+        if(command=="rehearsal_mode"){rehearsing=yes(a,"enabled");dialogPolicy();return true;}
+        if(command=="test_dialog_policy")return QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        if(command=="test_file_dialog"){auto dialog=new QFileDialog(fixture);dialog->setWindowTitle("AI Guide test save");dialog->setAcceptMode(QFileDialog::AcceptSave);dialog->setFileMode(QFileDialog::AnyFile);fileFixture=dialog;dialog->show();return describe(Element{dialog});}
+        if(command=="test_close_file_dialog"){if(fileFixture){qobject_cast<QDialog*>(fileFixture.data())->reject();delete fileFixture.data();}return true;}
         if(command=="test_overlay_state"){
             QJsonArray out;for(auto overlay:overlays)if(overlay&&overlay->isVisible()){
                 auto owner=overlay->parentWidget();auto style=GetWindowLongPtrW(reinterpret_cast<HWND>(overlay->internalWinId()),GWL_EXSTYLE);
@@ -296,12 +363,18 @@ public:
             auto count=new QLabel("Count: 0",center);count->setObjectName("guideCount");count->setProperty("count",0);layout->addWidget(count);
             auto button=new QPushButton("计数 +1",center);button->setObjectName("guideIncrement");layout->addWidget(button);connect(button,&QPushButton::clicked,count,[count]{int n=count->property("count").toInt()+1;count->setProperty("count",n);count->setText("Count: "+QString::number(n));});
             auto edit=new QLineEdit(center);edit->setObjectName("guideText");layout->addWidget(edit);
+            auto row=new QFrame(center);row->setObjectName("guideFieldRow");auto fields=new QHBoxLayout(row);fields->addWidget(new QLabel("Labelled value",row));auto value=new QLineEdit(row);value->setObjectName("guideLabelledValue");fields->addWidget(value);layout->addWidget(row);
             auto slider=new QSlider(Qt::Horizontal,center);slider->setObjectName("guideSlider");slider->setRange(0,100);slider->setValue(50);layout->addWidget(slider);
             auto tree=new QTreeWidget(center);tree->setObjectName("guideTree");tree->setHeaderLabel("Objects");auto player=new QTreeWidgetItem(tree,QStringList{"Player"});new QTreeWidgetItem(player,QStringList{"Body"});layout->addWidget(tree);
             auto tabs=new QTabWidget(center);tabs->setObjectName("guideTabs");tabs->addTab(new QLabel("First page",tabs),"One");tabs->addTab(new QLabel("Second page",tabs),"Two");layout->addWidget(tabs);
             auto bar=new QMenuBar(center);layout->insertWidget(0,bar);auto menu=bar->addMenu("Test");auto modal=menu->addAction("Open modal");connect(modal,&QAction::triggered,win,[this,win]{QDialog dialog(win);dialog.setObjectName("guideModal");dialog.setWindowTitle("AI Guide modal");QVBoxLayout layout(&dialog);QLineEdit edit(&dialog);edit.setObjectName("modalText");layout.addWidget(&edit);QPushButton close("Close modal",&dialog);close.setObjectName("modalClose");layout.addWidget(&close);QObject::connect(&close,&QPushButton::clicked,&dialog,&QDialog::accept);dialog.exec();});
             win->show();return describe(Element{win});
         }
+        if(command=="test_second_fixture"){
+            if(secondFixture)return describe(Element{secondFixture});auto win=new QDialog;win->setWindowTitle("AI Guide second window");win->setObjectName("guideSecondWindow");win->resize(460,260);auto layout=new QVBoxLayout(win);auto button=new QPushButton("Second target",win);button->setObjectName("guideSecondButton");layout->addWidget(button);auto scroll=new QScrollArea(win);scroll->setWidgetResizable(true);auto content=new QWidget;auto rows=new QVBoxLayout(content);for(int i=0;i<24;i++)rows->addWidget(new QLabel(QString("Row %1").arg(i),content));auto field=new QLineEdit(content);field->setObjectName("guideScrolledEdit");rows->addWidget(field);scroll->setWidget(content);layout->addWidget(scroll);secondFixture=win;return describe(Element{win});
+        }
+        if(command=="test_close_second"){if(secondFixture)delete secondFixture.data();return true;}
+        if(command=="test_active_window")return qApp->activeWindow()?qApp->activeWindow()->windowTitle():QString();
         if(command=="test_user_click"){
             auto e=resolve(a["target"]);if(!e.w)throw std::runtime_error("Fixture target not found");QPoint p=e.rect().center();QMouseEvent down(QEvent::MouseButtonPress,e.w->mapFromGlobal(p),p,Qt::LeftButton,Qt::LeftButton,{}),up(QEvent::MouseButtonRelease,e.w->mapFromGlobal(p),p,Qt::LeftButton,{},{});QApplication::sendEvent(e.w,&down);QApplication::sendEvent(e.w,&up);return true;
         }
@@ -316,13 +389,14 @@ public:
         if(command=="state"){QJsonArray out;for(auto w:roots())if(w->isVisible())out.append(describe(Element{w}));return QJsonObject{{"windows",out},{"modal",qApp->activeModalWidget()?QJsonValue(describe(Element{qApp->activeModalWidget()})):QJsonValue()},{"focus",focus()?describe(Element{focus()}):QJsonObject()},{"guide",status()}};}
         if(command=="snapshot"||command=="find"){
             QWidget*under=nullptr;if(a.contains("root"))under=resolve(a["root"]).w;if(a.contains("under"))under=resolve(a["under"]).w;
+            if((a.contains("root")||a.contains("under"))&&!under)return QJsonObject{{"total",0},{"elements",QJsonArray{}},{"scope_error","Parent window or control is not available"}};
             QJsonArray out;int total=0;for(auto e:elements(under,num(a,"max_items",40))){if(command=="find"?!match(e,a):(yes(a,"visible_only",true)&&!e.visible()))continue;total++;if(out.size()<num(a,command=="find"?"limit":"max_nodes",command=="find"?20:600))out.append(describe(e));}return QJsonObject{{"total",total},{"elements",out}};
         }
         if(command=="describe")return describe(resolve(a["target"]));
         if(command=="act")return act(a);
         if(command=="action_status")return actionResults.value(num(a,"id"),{{"status","unknown"},{"ok",false}});
         if(command=="highlight"){highlights=a["targets"].toArray();if(highlights.isEmpty()&&a.contains("target"))highlights.append(a["target"]);markText=str(a,"text");auto duration=num(a,"duration_ms",6000);markUntil=duration==0?std::numeric_limits<qint64>::max():QDateTime::currentMSecsSinceEpoch()+duration;tick();return QJsonObject{{"ok",true},{"targets",highlights.size()}};}
-        if(command=="guide"){steps=a["steps"].toArray();if(steps.isEmpty())throw std::runtime_error("Guide requires steps");lastGuide=a;lastGuide["waiting"]=false;restartArmed=false;title=str(a,"title","AI Guide");step=0;dim=yes(a,"dim",true);state="running";highlights={};enterStep();tick();return status();}
+        if(command=="guide"){steps=a["steps"].toArray();if(steps.isEmpty())throw std::runtime_error("Guide requires steps");lastGuide=a;lastGuide["waiting"]=false;restartArmed=false;title=str(a,"title","AI Guide");step=0;dim=yes(a,"dim",true);state="running";dialogPolicy();highlights={};enterStep();tick();return status();}
         if(command=="guide_status")return status();
         if(command=="guide_control")return control(str(a,"action"));
         if(command=="clear"){clear();return true;}
@@ -330,6 +404,9 @@ public:
         if(command=="screenshot"){
             auto e=a.contains("target")?resolve(a["target"]):a.contains("window")?resolve(a["window"]):Element{qApp->activeModalWidget()?qApp->activeModalWidget():qApp->activeWindow()};
             if(!e.w)throw std::runtime_error("No window to capture");QWidget*w=e.w->window();auto pix=w->screen()->grabWindow(w->winId());if(pix.isNull())pix=w->grab();
+            // Owned transparent tool windows are not children in a window-DC capture.
+            // Composite our layer explicitly so screenshots show the actual instruction.
+            {QPainter painter(&pix);auto overlay=overlays.value(w);if(overlay&&overlay->isVisible())overlay->draw(painter);if(bubble&&bubble->isVisible()&&bubble->parentWidget()==w)bubble->render(&painter,bubble->mapToGlobal({0,0})-w->mapToGlobal({0,0}));}
             auto scale=pix.devicePixelRatio();if(a.contains("target")&&yes(a,"crop",true)){auto r=e.rect();r.translate(-w->mapToGlobal({0,0}));int margin=num(a,"margin",num(a,"padding",80));r=r.adjusted(-margin,-margin,margin,margin).intersected(w->rect());pix=pix.copy(QRect(r.x()*scale,r.y()*scale,r.width()*scale,r.height()*scale));}
             int maxWidth=num(a,"max_width",1600);if(maxWidth>0&&pix.width()>maxWidth)pix=pix.scaledToWidth(maxWidth,Qt::SmoothTransformation);
             auto path=str(a,"path");if(path.isEmpty()||!pix.save(path,"PNG"))throw std::runtime_error("Screenshot save failed");return QJsonObject{{"path",path},{"width",pix.width()},{"height",pix.height()},{"device_pixel_ratio",scale}};

@@ -130,7 +130,13 @@ Invoke-RestMethod 'http://127.0.0.1:7660/mcp' -Method Post `
 }
 ```
 
-每步有编号、高亮、说明，以及上一步/下一步/从头开始/退出按钮。未找到目标时等待，目标出现后继续跟踪。可以自动滚动 Qt 树条目；不会擅自展开用户折叠的树或切换隐藏标签。
+每步有编号、高亮、说明，以及上一步/下一步/定位/从头开始/退出按钮。教程面板显示准备中、启动结果或失败原因。开始、自动推进、上一步或下一步时，自动呈现目标所在窗口；等待中的目标出现后也会定位。窗口只在这些时机激活，不会每帧抢焦点；操作中切到其他窗口可用“定位”返回。目标被模态窗口阻挡时先等待该窗口处理。
+
+未找到目标时等待；可选 `fallback` 查询用于原 locator 失效后的定位。`under` 指定的父窗口不存在时不会搜索其他窗口。Qt 树条目和普通滚动区域最多尝试三次滚动定位，不会自动展开折叠树或切换隐藏标签。原生材质行可用 `class:CQTextureControl,label:Color` 等语义定位，再在其下查找 `QLineEdit`。
+
+顶层 `activate_window` 默认 true，可关闭自动切窗。`open_assets` 是可选的项目资源路径列表，如 `maps/level1.vmap`，在捕获检查点后通过编辑器打开。每步 `project_path` 是主项目相对文件路径，进入时把当前同事机器上的完整路径放入剪贴板；普通 `clipboard` 用于贴图路径等固定文本。共享教程不要保存作者盘符、用户名或临时 `eN` 引用。
+
+教程与演练期间临时使用 Qt 风格文件对话框，以便高亮文件名、保存等控件；停止或完成后恢复之前的对话框设置。
 
 默认由用户点击目标完成。AI 的合成点击不会冒充用户点击；演示用 `guide_control:{action:"do_step"}`，动作可在步骤的 `action` 中指定。
 
@@ -139,13 +145,16 @@ Invoke-RestMethod 'http://127.0.0.1:7660/mcp' -Method Post `
 - `"click"`、`"manual"`。
 - `{"visible":target}`、`{"exists":target}`。
 - `{"text_contains":{"target":target,"text":"内容"}}`。
+- `{"text_equals":{"target":target,"text":"内容","committed":true}}`、`{"number_equals":{"target":target,"value":0.7,"committed":true}}`。`committed` 要求在本步内按 Enter 或离开输入框后再判定，避免输入尚未提交便跳步。
+- `{"tooltip_contains":{"target":target,"text":"#FFFFFF"}}`，用于颜色预览等提供结果提示的控件。
+- `{"context":{"path":"hammer.selection_mode","equals":"Faces"}}`，按实际编辑器状态完成。
 - `{"key":"Ctrl+S"}`，用户键盘事件。
 - `{"selected":"对象 GUID 或名称"}`、`{"inspecting":"GUID、名称或类型全名"}`。
 - `{"main_screen":"场景名称"}` 或 `"Hammer"`。
-- `{"file_saved":{"ext":"scene","contains":"可选内容"}}`，检测进入该步骤之后写入的文件。
-- `{"any":[条件1,条件2]}`，任一满足。
+- `{"file_saved":{"path":"Assets/materials/practice.vmat","ext":"vmat","contains":"可选内容"}}`，检测进入该步骤之后写入的文件。优先指定准确项目路径；省略路径时进行有数量、深度和大小限制的扫描，忽略缓存、Library 与版本控制目录，每 500 毫秒最多检查一次。
+- `{"any":[条件1,条件2]}`、`{"all":[条件1,条件2]}`、`{"not":条件}`。
 
-条件在进入步骤时已经满足，仍要求用户点击或按下一步，避免教程一开始就跳完。
+条件在进入步骤时已经满足，或用上一步返回时，仍要求用户点击或按下一步，避免刚打开教程或返回就跳走。默认点击完成会延迟约 120 毫秒，让菜单/弹窗先处理本次点击，避免一个事件连续跨过数步。人工视觉判断可用 manual；输入、选择、保存应优先检测真实结果。
 
 建议制作流程：`rehearsal_start` → 用 `ui_act` 演示 → `rehearsal_stop(rollback:true,save_as:"教程名",texts:[...])` → `recipe_play`。录制只收集 `ui_act` 调用，不能把任意人工操作或 `editor_exec` 自动转换成教程。保存位置是 `Config/AIGuide/Recipes/教程名.json`，属于项目内容，使用项目自己的版本控制发布。插件 `Recipes/` 是内置示例；项目同名教程优先，`recipe_list` 用 `source` 标明 `project` 或 `builtin`。
 

@@ -88,6 +88,79 @@ try{
         Native test_user_click @{target=$button.ref};Wait-Guide running 1;Start-Sleep -Milliseconds 250;Assert ((Tool guide_status).index -eq 1) 'pre-satisfied condition auto-skipped'
         Tool guide_control @{action='next'};Wait-Guide completed
     }
+    Test 'missing parent scope never resolves an unrelated global control' {
+        $q=@{name='guideText';under=@{name='this-window-does-not-exist'}}
+        Assert ((Tool ui_find $q).total -eq 0) 'missing scope widened to global search'
+        Tool ui_guide @{steps=@(@{target=$q;text='等待正确窗口';until='click'})};Start-Sleep -Milliseconds 250
+        $s=Tool guide_status;Assert ($s.waiting -and $s.target_error) 'missing target must be diagnosed'
+        Native test_user_click @{target=$button.ref};Start-Sleep -Milliseconds 250;Assert ((Tool guide_status).index -eq 0) 'unrelated click advanced missing target';Tool guide_control @{action='stop'}
+    }
+    Test 'Godot-style fallback and live text completion advance without next' {
+        Act paste $edit.ref @{text='before'}
+        Tool ui_guide @{steps=@(@{target='/qt/stale';fallback=@{name='guideText'};text='填写内容';until=@{text_contains=@{target=@{name='guideText'};text='done value'}}},@{target=$button.locator;text='手动确认';until='manual'})}
+        Start-Sleep -Milliseconds 200;$s=Tool guide_status;Assert ($s.fallback_used -and $s.target.ref -eq $edit.ref) 'fallback did not find correct target'
+        Act paste $edit.ref @{text="done `n value"};Wait-Guide running 1
+        Tool guide_control @{action='prev'};Start-Sleep -Milliseconds 350;Assert ((Tool guide_status).index -eq 0) 'previous step immediately advanced again'
+        Native test_user_click @{target=$edit.ref};Wait-Guide running 1;Tool guide_control @{action='stop'}
+    }
+    Test 'labelled field and numeric result conditions' {
+        $q=@{class='QLineEdit';under=@{class='QFrame';label='Labelled value';under=$fixture.ref}}
+        $value=Tool ui_describe @{target=$q};Assert ($value.name -eq 'guideLabelledValue') 'semantic label field'
+        Act paste $value.ref @{text='0'};Tool ui_guide @{steps=@(@{target=$q;text='输入 0.7';until=@{number_equals=@{target=$q;value=0.7}}})}
+        Act paste $value.ref @{text='0.700'};Wait-Guide completed
+    }
+    Test 'committed values wait for Enter and project-relative saved result' {
+        Act paste $edit.ref @{text='before'}
+        Tool ui_guide @{steps=@(@{target=$edit.locator;text='提交后再继续';until=@{text_equals=@{target=$edit.locator;text='committed';committed=$true}}},@{target=$edit.locator;text='保存准确文件';project_path=('Tools/'+[IO.Path]::GetFileName($created));until=@{file_saved=@{path=('Tools/'+[IO.Path]::GetFileName($created));contains=$token}}})}
+        Act paste $edit.ref @{text='committed'};Start-Sleep -Milliseconds 300;Assert ((Tool guide_status).index -eq 0) 'typing advanced before commit'
+        Act key $edit.ref @{keys='Enter'};Wait-Guide running 1
+        $clip=Exec 'return Editor.EditorUtility.Clipboard.Paste();'
+        Assert ($clip.Replace('\','/') -eq $created.Replace('\','/')) 'project path clipboard is not portable'
+        # A Hammer .vmap is binary DMX: text after NUL must remain searchable.
+        [IO.File]::WriteAllBytes($created,[Text.Encoding]::UTF8.GetBytes("binary`0$token"));Wait-Guide completed
+        Move-Item -LiteralPath $created -Destination (Join-Path (Split-Path $ResultsPath) "binary-save-$token.txt")
+    }
+    Test 'whole-window highlight stays inside capture and is visible' {
+        Tool ui_highlight @{target=$fixture.ref;duration_ms=0};$shot=Tool editor_screenshot @{window=$fixture.ref;max_width=0}
+        Add-Type -AssemblyName System.Drawing;$bitmap=[Drawing.Bitmap]::new($shot.path)
+        try{$orange=$false;foreach($y in 2..6){$c=$bitmap.GetPixel([int]($bitmap.Width/2),$y);if($c.R -gt 230 -and $c.G -gt 150 -and $c.G -lt 220 -and $c.B -lt 130){$orange=$true}};Assert $orange 'whole-window highlight was clipped or absent from capture'}finally{$bitmap.Dispose()}
+        Tool ui_highlight @{clear=$true}
+    }
+    Test 'tutorial presents correct window on automatic, next and previous transitions' {
+        try{
+            Native test_second_fixture;Act paste $edit.ref @{text='before'}
+            Tool ui_guide @{steps=@(@{target=$edit.locator;text='输入切换';until=@{text_contains=@{target=$edit.locator;text='switch'}}},@{target=@{name='guideSecondButton'};text='第二窗口';until='click'},@{target=$edit.locator;text='返回第一窗口';until='manual'})}
+            Start-Sleep -Milliseconds 250;Assert ((Tool guide_status).presented_window -eq 'AI Guide native test') 'initial tutorial window'
+            Act paste $edit.ref @{text='switch'};Wait-Guide running 1;Start-Sleep -Milliseconds 250
+            Assert ((Tool guide_status).presented_window -eq 'AI Guide second window') 'automatic transition did not present next window'
+            Assert ((Native test_active_window) -eq 'AI Guide second window') 'second window is not active'
+            $second=Tool ui_describe @{target=@{name='guideSecondButton'}};Native test_user_click @{target=$second.ref};Wait-Guide running 2
+            Tool guide_control @{action='prev'};Start-Sleep -Milliseconds 250;Assert ((Tool guide_status).presented_window -eq 'AI Guide second window') 'previous did not restore window'
+            Tool guide_control @{action='next'};Start-Sleep -Milliseconds 250;Assert ((Tool guide_status).presented_window -eq 'AI Guide native test') 'next did not restore window'
+            Tool guide_control @{action='locate'}
+        }finally{Tool guide_control @{action='stop'};Native test_close_second}
+    }
+    Test 'offscreen control auto-scrolls into view with bounded retries' {
+        try{Native test_second_fixture;Tool ui_guide @{steps=@(@{target=@{name='guideScrolledEdit'};text='滚动定位';until='manual'})};Start-Sleep -Milliseconds 1200;$s=Tool guide_status;Assert (!$s.waiting -and $s.target.visible -and $s.target.name -eq 'guideScrolledEdit') 'offscreen target did not become visible'}finally{Tool guide_control @{action='stop'};Native test_close_second}
+    }
+    Test 'blocking modal receives the guide and returns to the target after closing' {
+        Tool ui_guide @{steps=@(@{target=$edit.locator;text='等待对话框';until='manual'})}
+        try{
+            $menu=Find-One @{text='Test';kind='menu';exact=$true;under=$fixture.ref};Act click $menu.ref
+            $open=Find-One @{text='Open modal';kind='menu';exact=$true};Act click $open.ref
+            Start-Sleep -Milliseconds 350;$s=Tool guide_status
+            Assert ($s.waiting -and $s.presented_window -eq 'AI Guide modal') 'blocking modal was not presented'
+            Native test_close_modal;Start-Sleep -Milliseconds 350;$s=Tool guide_status
+            Assert (!$s.waiting -and $s.presented_window -eq 'AI Guide native test') 'target window was not restored'
+        }finally{Native test_close_modal;Tool guide_control @{action='stop'}}
+    }
+    Test 'tutorial exposes file-dialog controls and restores the prior dialog policy' {
+        $prior=Native test_dialog_policy
+        try{Tool ui_guide @{steps=@(@{target=$button.locator;text='文件对话框检查';until='manual'})};Assert (Native test_dialog_policy) 'tutorial dialog policy';$dialog=Native test_file_dialog;Assert ((Tool ui_find @{name='fileNameEdit';under=$dialog.ref}).total -eq 1) 'file-name control is not exposed to the guide'}
+        finally{Native test_close_file_dialog;Tool guide_control @{action='stop'}}
+        Assert ((Native test_dialog_policy) -eq $prior) 'dialog policy not restored'
+        Tool rehearsal_start;Assert (Native test_dialog_policy) 'rehearsal dialog policy';Tool rehearsal_stop @{rollback=$false};Assert ((Native test_dialog_policy) -eq $prior) 'rehearsal policy not restored'
+    }
     Test 'guide waiting, live condition, prev and do_step' {
         Tool ui_guide @{steps=@(@{target=@{name='not-created-yet'};text='等待目标';until='manual'},@{target=$edit.locator;text='输入完成';until=@{text_contains=@{target=$edit.locator;text='done'}}},@{target=$button.locator;text='演示点击';action='click'})}
         Assert ((Tool guide_status).waiting) 'waiting flag';Tool guide_control @{action='next'};Act paste $edit.ref @{text='done'};Wait-Guide running 2

@@ -1,27 +1,64 @@
 {
   "title": "认识编辑器入口",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "dim": true,
   "steps": [
     {
-      "target": {"text":"File","exact":true,"kind":"menu","under":{"class":"CFramelessMainWindow","text":"s&box editor","kind":"control"}},
-      "text": "File 是场景的打开和保存入口。这里先观察位置，点击“下一步”继续。",
-      "until": "manual"
+      "target": {
+        "text": "File",
+        "exact": true,
+        "kind": "menu",
+        "under": {
+          "class": "CFramelessMainWindow",
+          "text": "s&box editor",
+          "kind": "control"
+        }
+      },
+      "text": "File 是场景的打开和保存入口。点击高亮菜单后会自动继续，也可使用下一步。",
+      "until": "click"
     },
     {
-      "target": {"text":"Edit","exact":true,"kind":"menu","under":{"class":"CFramelessMainWindow","text":"s&box editor","kind":"control"}},
+      "target": {
+        "text": "Edit",
+        "exact": true,
+        "kind": "menu",
+        "under": {
+          "class": "CFramelessMainWindow",
+          "text": "s&box editor",
+          "kind": "control"
+        }
+      },
       "text": "Edit 包含撤销、重做等编辑操作。教程气泡会跟随目标，并在目标不可见时等待。",
-      "until": "manual"
+      "until": "click"
     },
     {
-      "target": {"text":"Tools","exact":true,"kind":"menu","under":{"class":"CFramelessMainWindow","text":"s&box editor","kind":"control"}},
+      "target": {
+        "text": "Tools",
+        "exact": true,
+        "kind": "menu",
+        "under": {
+          "class": "CFramelessMainWindow",
+          "text": "s&box editor",
+          "kind": "control"
+        }
+      },
       "text": "Tools 是编辑器工具入口。Hammer 内的原生 Qt 菜单、树条目和属性控件也可用同一套引导方式。",
-      "until": "manual"
+      "until": "click"
     },
     {
-      "target": {"text":"AI Guide","exact":true,"kind":"menu","under":{"class":"CFramelessMainWindow","text":"s&box editor","kind":"control"}},
-      "text": "从 AI Guide 菜单打开教程与状态，或停止当前引导。本示例只介绍入口，点击“下一步”结束。",
-      "until": "manual"
+      "target": {
+        "text": "AI Guide",
+        "exact": true,
+        "kind": "menu",
+        "under": {
+          "class": "CFramelessMainWindow",
+          "text": "s&box editor",
+          "kind": "control"
+        }
+      },
+      "text": "从 AI Guide 菜单打开教程与状态，或停止当前引导。点击高亮菜单完成，也可使用下一步。",
+      "until": "click"
     }
-  ]
+  ],
+  "activate_window": true
 }

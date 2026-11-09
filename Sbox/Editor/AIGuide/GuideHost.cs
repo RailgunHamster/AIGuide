@@ -15,7 +15,7 @@ namespace AIGuide.Sbox;
 /// <summary>Project editor plugin. Native UI continues to work inside Qt modal loops.</summary>
 public static class GuideHost
 {
-    public const string Version = "1.2.1";
+    public const string Version = "1.3.0";
     private static readonly ConcurrentQueue<Action> main = new();
     private static GuideTransport transport;
     private static string root;
@@ -42,7 +42,7 @@ public static class GuideHost
         return completion.Task.WaitAsync(TimeSpan.FromSeconds(20));
     }
     [EditorEvent.Hotload]
-    private static void Hotload(){transport?.Dispose();transport=null;root=null;initializationError=null;next=DateTime.MinValue;}
+    private static void Hotload(){if(GuideNative.Loaded)_=GuideNative.Async("rehearsal_mode",new(){["enabled"]=false});transport?.Dispose();transport=null;root=null;initializationError=null;next=DateTime.MinValue;}
     [EditorEvent.Frame]
     public static void Frame()
     {
@@ -85,7 +85,7 @@ public static class GuideHost
         if(s is not null)foreach(var o in s.Selection.OfType<GameObject>()){selected.Add(o.Id.ToString());selected.Add(o.Name);}
         var inspecting=new JsonArray();var inspected=EditorUtility.InspectorObject;
         if(inspected!=null){inspecting.Add(inspected.GetType().FullName);inspecting.Add(inspected.ToString());if(inspected is GameObject go){inspecting.Add(go.Id.ToString());inspecting.Add(go.Name);}if(inspected is Component component)inspecting.Add(component.Id.ToString());if(inspected is Editor.MapDoc.MapNode node){if(GuideCompatibility.NodeId(node) is {} nodeId)inspecting.Add(nodeId.ToString());inspecting.Add(node.Name);}}
-        JsonObject hammer=null;if(Editor.MapEditor.Hammer.Open&&Editor.MapEditor.Hammer.ActiveMap is {} map){var nodes=Editor.MapEditor.Selection.All.ToArray();foreach(var node in nodes){if(GuideCompatibility.NodeId(node) is {} nodeId)selected.Add(nodeId.ToString());selected.Add(node.Name);}hammer=new(){["file"]=map.PathName,["modified"]=GuideCompatibility.HammerModified(typeof(Editor.MapEditor.Hammer)),["selected"]=GJson.Node(nodes.Select(n=>new{NodeId=GuideCompatibility.NodeId(n),n.Name}))};}
+        JsonObject hammer=null;if(Editor.MapEditor.Hammer.Open&&Editor.MapEditor.Hammer.ActiveMap is {} map){var nodes=Editor.MapEditor.Selection.All.ToArray();foreach(var node in nodes){if(GuideCompatibility.NodeId(node) is {} nodeId)selected.Add(nodeId.ToString());selected.Add(node.Name);}hammer=new(){["file"]=map.PathName,["modified"]=GuideCompatibility.HammerModified(typeof(Editor.MapEditor.Hammer)),["selection_mode"]=Editor.MapEditor.Selection.SelectMode.ToString(),["current_material"]=Editor.MapEditor.Hammer.CurrentMaterial?.ResourcePath,["selected"]=GJson.Node(nodes.Select(n=>new{NodeId=GuideCompatibility.NodeId(n),n.Name}))};}
         return new JsonObject { ["project"]=Root,["selected"]=selected,["main_screen"]=Editor.MapEditor.Hammer.Window?.IsActiveWindow==true?"Hammer":s?.Scene?.Name??"",["inspecting"]=inspecting,["scene"]=s?.Scene?.Source?.ResourcePath,["open_scenes"]=GJson.Node(SceneEditorSession.All.Select(x=>new{path=x.Scene?.Source?.ResourcePath,name=x.Scene?.Name,modified=x.HasUnsavedChanges})),["hammer"]=hammer,["playing"]=Game.IsPlaying };
     }
     internal static JsonNode EditorState()=>new JsonObject { ["version"]=Version,["project"]=Root,["editor"]=Context(),["ui"]=GuideNative.Call("state"),["native"]=GuideNative.Call("info"),["transport"]=Address,["rehearsing"]=rehearsal!=null };
@@ -112,13 +112,31 @@ public static class GuideHost
         if(a.A("steps").Count==0)throw new ArgumentException("Guide requires at least one step.");
         await GuideNative.Async("clear");await Main(()=>{checkpoint?.Release();return true;});
         checkpoint=await GuideCheckpoint.Capture(Root,a.S("title"));
-        lastGuide=a.DeepClone().AsObject();return await GuideNative.Async("guide",a);
+        lastGuide=a.DeepClone().AsObject();await PrepareGuide(a);return await GuideNative.Async("guide",a);
+    }
+    private static async Task PrepareGuide(JsonObject recipe)
+    {
+        foreach(var entry in recipe.A("open_assets"))
+        {
+            var path=entry.GetValue<string>().Replace('\\','/');
+            if(Path.IsPathRooted(path)||path.Split('/').Any(p=>p==".."))throw new ArgumentException("Tutorial assets must use project resource paths.");
+            await Main(()=>{var asset=Editor.AssetSystem.FindByPath(path)??throw new FileNotFoundException("教程需要的资源不存在："+path);asset.OpenInEditor();return true;});
+            var extension=Path.GetExtension(path);if(extension!=".vmap"&&extension!=".vmat")continue;
+            var until=DateTime.UtcNow.AddSeconds(15);var ready=false;
+            do
+            {
+                if(extension==".vmap")ready=await Main(()=>Editor.MapEditor.Hammer.Open&&Editor.MapEditor.Hammer.ActiveMap is {} map&&map.PathName.Replace('\\','/').EndsWith(path,StringComparison.OrdinalIgnoreCase));
+                else{var found=(await GuideNative.Async("find",new(){["class"]="CQMaterialEditor",["text"]=Path.GetFileNameWithoutExtension(path),["kind"]="control"})).AsObject();ready=found.I("total")>0;}
+                if(!ready)await Task.Delay(100);
+            }while(!ready&&DateTime.UtcNow<until);
+            if(!ready)throw new TimeoutException("等待教程资源窗口超时："+path+"。请先处理当前保存或提示对话框。");
+        }
     }
     private static async Task<JsonNode> Restart()
     {
         if(checkpoint==null||lastGuide==null)throw new InvalidOperationException("No guide checkpoint.");
         var report=await checkpoint.Restore();checkpoint=await GuideCheckpoint.Capture(Root,lastGuide.S("title"));
-        await GuideNative.Async("guide",lastGuide);return report;
+        await PrepareGuide(lastGuide);await GuideNative.Async("guide",lastGuide);return report;
     }
     internal static async Task<JsonNode> Call(string name,JsonObject a=null)
     {
@@ -153,6 +171,7 @@ public static class GuideHost
                 if(a.S("action")=="do_step"){
                     var status=(await GuideNative.Async("guide_status")).AsObject();var step=status.A("steps").ElementAtOrDefault(status.I("index"))?.AsObject()??throw new InvalidOperationException("No current guide step.");
                     var action=step["action"] is JsonObject o?o.DeepClone().AsObject():new JsonObject{["action"]=step.S("action","click")};
+                    if(step.S("project_path") is {Length:>0} projectPath){var full=Path.GetFullPath(Path.Combine(Root,projectPath));if(!full.StartsWith(Root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new ArgumentException("Tutorial path escapes the project.");action["text"]=full;}
                     action["target"]=step["target"].Copy();action["show"]=true;
                     var result=await Call("ui_act",action);
                     if(result?["ok"]?.GetValue<bool>()!=true)return result;
@@ -168,12 +187,12 @@ public static class GuideHost
             }
             case "rehearsal_start":{
                 if(rehearsal!=null)throw new InvalidOperationException("A rehearsal is already running.");
-                rehearsal=await GuideCheckpoint.Capture(Root,a.S("title","Rehearsal"));recorded=new();return new JsonObject{["ok"]=true,["title"]=rehearsal.Title};
+                rehearsal=await GuideCheckpoint.Capture(Root,a.S("title","Rehearsal"));recorded=new();await GuideNative.Async("rehearsal_mode",new(){["enabled"]=true});return new JsonObject{["ok"]=true,["title"]=rehearsal.Title};
             }
             case "rehearsal_stop":{
                 if(rehearsal==null)throw new InvalidOperationException("No rehearsal is running.");
-                var old=rehearsal;rehearsal=null;var steps=new JsonArray();int i=0;
-                foreach(var entry in recorded){var record=entry.AsObject();var action=record.S("action");var step=new JsonObject{["target"]=record["target"].Copy(),["text"]=a.A("texts").ElementAtOrDefault(i)?.GetValue<string>()??$"{action}: {record.O("target_info").S("text")}",["action"]=record.Copy()};
+                var old=rehearsal;rehearsal=null;await GuideNative.Async("rehearsal_mode",new(){["enabled"]=false});var steps=new JsonArray();int i=0;
+                foreach(var entry in recorded){var record=entry.AsObject();var action=record.S("action");var step=new JsonObject{["target"]=record["target"].Copy(),["fallback"]=record["fallback"].Copy(),["text"]=a.A("texts").ElementAtOrDefault(i)?.GetValue<string>()??$"{action}: {record.O("target_info").S("text")}",["until"]="click",["action"]=record.Copy()};
                     if(action=="key")step["until"]=new JsonObject{["key"]=record.S("keys")};
                     if(action=="type"||action=="paste"){step["clipboard"]=record.S("text");step["until"]=new JsonObject{["text_contains"]=new JsonObject{["target"]=record["target"].Copy(),["text"]=record.S("text")}};}
                     steps.Add(step);i++;}
@@ -186,7 +205,7 @@ public static class GuideHost
             }
             case "recipe_list":return Recipes();
             case "recipe_play":{
-                var recipe=LoadRecipe(a.S("name"));foreach(var k in new[]{"title","dim"})if(a.ContainsKey(k))recipe[k]=a[k].Copy();
+                var recipe=LoadRecipe(a.S("name"));foreach(var k in new[]{"title","dim","activate_window"})if(a.ContainsKey(k))recipe[k]=a[k].Copy();
                 var texts=a.A("texts");for(int i=0;i<Math.Min(texts.Count,recipe.A("steps").Count);i++)if(texts[i]?.GetValue<string>() is {Length:>0} text)recipe.A("steps")[i]["text"]=text;
                 return await BeginGuide(recipe);
             }
@@ -206,6 +225,8 @@ public static class GuideHost
 
 internal sealed class GuidePanel:Window
 {
+    private readonly List<Button> recipeButtons=new();
+    private readonly Label status;
     public GuidePanel()
     {
         Title="AI Guide";Size=new Vector2(480,460);
@@ -213,13 +234,23 @@ internal sealed class GuidePanel:Window
         var layout=content.Layout;layout.Margin=14;layout.Spacing=10;
         layout.Add(new Label("AI Guide · "+GuideHost.Version,content));
         layout.Add(new Label(GuideHost.Address,content));
+        status=new Label("选择教程后会高亮目标，并自动切换到对应窗口。",content){WordWrap=true};layout.Add(status);
+        status.SetStyles("color:#ffb74d;");
         if(GuideHost.InitializationError is {Length:>0} error)layout.Add(new Label(error,content));
         layout.Add(new Button("停止当前引导",content){Clicked=GuideHost.StopGuide});
         foreach(var recipe in GuideHost.Recipes()){
             var name=recipe["name"].GetValue<string>();
-            layout.Add(new Button(name,content){Clicked=()=>_=GuideHost.Call("recipe_play",new(){["name"]=name})});
+            var button=new Button(name,content){Clicked=()=>_=StartRecipe(name)};layout.Add(button);recipeButtons.Add(button);
         }
         layout.AddStretchCell();
+    }
+    private async Task StartRecipe(string name)
+    {
+        foreach(var button in recipeButtons)if(button.IsValid)button.Enabled=false;
+        status.Text="正在准备教程与回退检查点…完成后自动定位到第一个目标。";
+        try{await GuideHost.Call("recipe_play",new(){["name"]=name});if(IsValid)status.Text="教程已启动。正确操作后会自动推进，也可使用上一步、下一步和定位。";}
+        catch(Exception e){if(IsValid)status.Text="教程未能启动："+e.GetBaseException().Message;}
+        finally{if(IsValid)foreach(var button in recipeButtons)if(button.IsValid)button.Enabled=true;}
     }
 }
 

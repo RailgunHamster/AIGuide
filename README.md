@@ -21,7 +21,7 @@
 
 详见 [Godot/README.md](Godot/README.md)。
 
-s&box 使用 `Sbox/Install.ps1 -Project <项目目录>` 安装。源码、测试和通用手册在本仓库的 `Sbox/` 中维护；游戏项目内是部署副本。详见 [Sbox/README.md](Sbox/README.md)。
+s&box 使用 `Sbox/.sbproj` 标准 Library，由 Verso 将本仓库的 `Sbox/` 映射到项目 `Libraries/AIGuide/`。成员更新项目后打开编辑器即可使用，无需安装脚本。详见 [Sbox/README.md](Sbox/README.md)。
 
 ## 仓库约定
 - 不放游戏文件、令牌和编辑器缓存（`.godot/` 等）。

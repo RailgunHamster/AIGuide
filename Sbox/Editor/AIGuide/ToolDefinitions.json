@@ -44,7 +44,7 @@
       "type": "object",
       "properties": {
         "root": {
-          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
           "anyOf": [
             {
               "type": "string"
@@ -114,7 +114,7 @@
           "default": "any"
         },
         "under": {
-          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
           "anyOf": [
             {
               "type": "string"
@@ -131,6 +131,10 @@
         "limit": {
           "type": "integer",
           "default": 20
+        },
+        "label": {
+          "type": "string",
+          "description": "Semantic child QLabel text identifying a native form row, e.g. class=CQTextureControl,label=Color. Supports stable field lookup without positional widget paths."
         }
       }
     }
@@ -145,7 +149,7 @@
       "type": "object",
       "properties": {
         "target": {
-          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
           "anyOf": [
             {
               "type": "string"
@@ -184,7 +188,7 @@
           ]
         },
         "target": {
-          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
           "anyOf": [
             {
               "type": "string"
@@ -273,7 +277,7 @@
         "targets": {
           "type": "array",
           "items": {
-            "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+            "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
             "anyOf": [
               {
                 "type": "string"
@@ -315,7 +319,7 @@
             "type": "object",
             "properties": {
               "target": {
-                "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+                "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
                 "anyOf": [
                   {
                     "type": "string"
@@ -330,7 +334,7 @@
                 "description": "Short instruction shown in the callout."
               },
               "until": {
-                "description": "click (default), manual, or {any:[conditions]}, {exists:target}, {visible:target}, {text_contains:{target,text}}, {key:\"Ctrl+S\"}, {selected:\"GUID|name\"}, {inspecting:\"GUID|name\"}, {main_screen:\"scene name|Hammer\"}, {file_saved:{ext:\"scene\",contains:\"text\"}}. Pre-satisfied conditions require click/next.",
+                "description": "click (default), manual, or {any:[conditions]}, {all:[conditions]}, {not:condition}, {exists:target}, {visible:target}, {text_contains:{target,text}}, {text_equals:{target,text,committed:true}}, {number_equals:{target,value,committed:true}}, {tooltip_contains:{target,text}}, {key:\"Ctrl+S\"}, {selected:\"GUID|name\"}, {inspecting:\"GUID|name\"}, {main_screen:\"scene name|Hammer\"}, {context:{path:\"hammer.selection_mode\",equals:\"Faces\"}}, {file_saved:{path:\"Assets/example.vmat\",ext:\"vmat\",contains:\"text\"}}. Initially satisfied conditions and previous steps require click/next confirmation. File checks are bounded and throttled.",
                 "anyOf": [
                   {
                     "type": "string"
@@ -353,6 +357,21 @@
               },
               "clipboard": {
                 "type": "string"
+              },
+              "fallback": {
+                "description": "Godot-style fallback query used when the recorded target locator no longer resolves. Must identify the same control unambiguously.",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "project_path": {
+                "type": "string",
+                "description": "Project-relative file path. On entry its absolute path in the current viewer project is copied to the clipboard; do_step paste resolves it at runtime. Never store the author computer path in a shared tutorial."
               }
             },
             "required": [
@@ -369,6 +388,18 @@
         "auto_scroll": {
           "type": "boolean",
           "default": true
+        },
+        "activate_window": {
+          "type": "boolean",
+          "default": true,
+          "description": "Present the correct target window once on tutorial start/step transition or when a missing window appears. Does not repeatedly take focus on timer ticks."
+        },
+        "open_assets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional prerequisite project resource paths, e.g. maps/practice.vmap. Opened read-only through the editor after capturing the rollback checkpoint; no asset contents are changed."
         }
       },
       "required": [
@@ -400,7 +431,8 @@
             "prev",
             "restart",
             "stop",
-            "do_step"
+            "do_step",
+            "locate"
           ]
         },
         "rollback": {
@@ -434,7 +466,7 @@
           ]
         },
         "target": {
-          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign.",
+          "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
           "anyOf": [
             {
               "type": "string"
@@ -556,6 +588,11 @@
         "dim": {
           "type": "boolean",
           "default": true
+        },
+        "activate_window": {
+          "type": "boolean",
+          "default": true,
+          "description": "Present the correct target window once on tutorial start/step transition or when a missing window appears. Does not repeatedly take focus on timer ticks."
         }
       },
       "required": [
