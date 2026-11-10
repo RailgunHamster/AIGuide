@@ -53,7 +53,7 @@
 | `editor_exec` | 在编辑器里执行一段 GDScript 片段（`func run():` 的函数体）——插件本身是 C#，这只是给 Agent 查语义/做没有界面的操作用的 |
 | `rehearsal_start` / `rehearsal_stop` | 演练：AI 先用 ui_act 把操作走一遍，插件录下每一步；结束时自动回滚现场，并把录制转成引导步骤，可存成配方 |
 | `recipe_list` / `recipe_play` | 列出 / 播放已保存的配方（`res://.ai_guide/recipes/*.json`） |
-| `ai_guide_reload` | 开发用：后台 `dotnet build`，编辑器检测到新程序集后自动重新加载，插件自行拆除并重建 |
+| `ai_guide_reload` | 开发工程的项目程序集热重载；内置插件程序集更新后重启编辑器 |
 
 ## 目标的三种写法
 - **ref**：`e12`（控件）、`e12.40`（树条目、标签页、菜单项等子项）。来自 snapshot/find，元素存活期间一直有效。
@@ -72,10 +72,9 @@
 进入某一步时条件已经成立的，不会自动跳过，而是提示用户点一下继续。步骤带 `clipboard` 时，进入该步会自动把内容放进剪贴板。
 
 ## 开发
-- 本节面向插件或引擎维护者。内置模式修改源码后，重新构建引擎的托管程序集并重启编辑器；`ai_guide_reload` 的项目构建路径用于项目级插件开发。
-- 本目录本身是一个最小 Godot C# 工程（`project.godot` + `AIGuide.Godot.csproj`），用来编译和调试插件：`dotnet build AIGuide.Godot.csproj`。
-- 在游戏里调试：把游戏的 `addons/ai_guide` 指向本仓库的工作副本（链接或同步），改完 `.cs` 后调用 `ai_guide_reload`（或在编辑器里点“构建”）。
-- C# 程序集重新加载时，Godot 会保留插件对象、替换代码：插件实现了 `ISerializationListener`，在 `OnBeforeSerialize` 里拆掉全部运行时对象（MCP 服务、覆盖层、菜单），`OnAfterDeserialize` 再按新代码重建。
+- 本节面向插件或引擎维护者。修改内置插件源码后，在已接入 AIGuide 的 Godot 源码中运行 `python modules/mono/build_scripts/build_assemblies.py --godot-output-dir=bin`，随后重启编辑器。
+- 本目录的最小 Godot C# 工程（`project.godot` + `AIGuide.Godot.csproj`）仅用于维护者开发与编译检查：`dotnet build AIGuide.Godot.csproj`。游戏项目直接使用集成编辑器。
+- 开发工程的 C# 程序集重新加载时，Godot 会保留插件对象、替换代码：插件实现了 `ISerializationListener`，在 `OnBeforeSerialize` 里拆掉全部运行时对象（MCP 服务、覆盖层、菜单），`OnAfterDeserialize` 再按新代码重建。
 - 正在执行的工具请求会在重新加载时被丢弃，HTTP 服务端与文件桥都有 30 秒兜底，超时会返回错误。
 
 需求与优先级见 [ROADMAP.md](ROADMAP.md)。

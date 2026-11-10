@@ -26,7 +26,7 @@ AIGuide/
 
 `Sbox/.sbproj` 声明 `railgunhamster.aiguide` Library。项目使用 Verso Git 依赖，将本仓库 `Sbox/` 映射到 `Libraries/AIGuide/`，固定到锁文件指定的提交。
 
-成员只需完成 Verso 项目更新并打开编辑器，s&box 自动发现 Library、编译 `Editor/` 并显示 **AI Guide → 教程与状态**。不执行安装脚本，不需要 IDE 或 SDK。插件不复制到主项目的 `Editor/`，也不更新自己的源码。以前的复制安装器已移除。
+成员只需完成 Verso 项目更新并打开编辑器，s&box 自动发现 Library、编译 `Editor/` 并显示 **AI Guide → 教程与状态**。不执行安装脚本，不需要 IDE 或 SDK。插件源码由 Library 独立管理。
 
 C# 编译产物由编辑器生成，不入库。原生 Qt 适配 DLL 与验证信息随 Git 提供；它只在主项目 `.ai_guide/native-cache/` 中建立运行缓存。内置教程从 Library 读取，项目教程仍在 `Config/AIGuide/Recipes/`，同名项目教程优先。本机端口、会话和截图在 `.ai_guide/`，不共享。
 
@@ -34,7 +34,7 @@ C# 编译产物由编辑器生成，不入库。原生 Qt 适配 DLL 与验证�
 
 ## 可选运行时调试
 
-[AIDebug/Sbox](https://github.com/RailgunHamster/AIDebug/tree/main/Sbox) 独立管理和安装，不是 AI Guide 的必需依赖。安装后，本服务额外列出 19 个 `ai_debug_*` 工具，转发到同进程中已激活的调试模块；不会为了显示工具而加载或启动它。单独安装 AI Guide 仍为 17 项工具。调试配置位于 `.ai_debug/`，与 `.ai_guide/` 分开。旧的 `debug_enabled` 配置不再使用。
+[AIDebug/Sbox](https://github.com/RailgunHamster/AIDebug/tree/main/Sbox) 是独立的 Library 依赖。项目声明并获取该依赖后，本服务额外列出 19 个 `ai_debug_*` 工具，转发到同进程中已激活的调试模块；不会为了显示工具而加载或启动它。仅使用 AI Guide 时仍为 17 项工具。调试配置位于 `.ai_debug/`，与 `.ai_guide/` 分开。旧的 `debug_enabled` 配置不再使用。
 
 业务存档和输入回放不属于该调试接口；s&box 也不提供 GDScript 求值。演练回退仍用于编辑器的场景撤销和文件恢复，但跳过全部点目录，保留调试会话、VCS 和其他本机工具状态。
 

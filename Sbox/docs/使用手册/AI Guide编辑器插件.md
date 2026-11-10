@@ -6,9 +6,9 @@ AI Guide 让本地 AI 读取编辑器界面、操作控件、标出按钮，并�
 
 这是根据 Godot 模块的功能重新实现的 s&box 插件。Godot 的场景节点、EditorInterface、GDScript、引擎补丁没有直接搬过来。AIDebug 作为独立标准 Library 可选接入，AI Guide 可转发已激活的调试服务。
 
-## 1. 安装、启动与配置
+## 1. 依赖更新、启动与配置
 
-团队项目将原 Git 仓库的 `Sbox/` 通过 Verso 依赖映射到 `Libraries/AIGuide/`，其中 `.sbproj` 声明标准 Library。成员获取完整更新后打开编辑器即可使用，无需脚本、IDE 或手动设置。s&box 自动编译 Library 自己的 `Editor/`。复制安装器和编辑器内自更新已移除。
+团队项目将原 Git 仓库的 `Sbox/` 通过 Verso 依赖映射到 `Libraries/AIGuide/`，其中 `.sbproj` 声明标准 Library。成员获取完整更新后打开编辑器即可使用，无需脚本、IDE 或手动设置。s&box 自动编译 Library 自己的 `Editor/`，源码版本由 Verso 管理。
 
 原生适配 DLL 位于 Library 内的 `Editor/AIGuide/Native/`，与 `BuildInfo.json` 一同提供。加载时检查 DLL 哈希及 Qt 模块组合，运行缓存写主项目 `.ai_guide/`。兼容 Steam 官方 `26.10.27c`、LTN 当前构建和已验证的 railgunhamster 旧 Qt；缺少便利成员的旧 SDK 通过能力适配。
 
@@ -46,7 +46,7 @@ $cli = 'C:/path/to/sbox/bin/managed/sbox-cli.exe'
 
 `aiguide_tools` 返回完整 17 项工具的 JSON Schema；`aiguide_call` 包装其中任意一项。原生模态窗口阻塞引擎主循环时，优先使用下面的独立 HTTP 入口。
 
-可选的 AIDebug 是另一个仓库和插件。项目安装它之后，`aiguide_tools` 和 HTTP 工具列表会增加 19 个 `ai_debug_*` schema；使用前需从 AI Debug 菜单或其可信本地加载脚本激活调试模块。AI Guide 本身不安装、不加载、不激活调试程序集。`.ai_debug/config.json` 管理调试设置；旧 `debug_enabled` 不再生效。详见 [AIDebug s&box 手册](https://github.com/RailgunHamster/AIDebug/tree/main/Sbox)。
+可选的 AIDebug 是另一个仓库的独立 Library。项目声明并获取该依赖后，`aiguide_tools` 和 HTTP 工具列表会增加 19 个 `ai_debug_*` schema；使用前需从 AI Debug 菜单或其可信本地加载脚本激活调试模块。AI Guide 本身不加载或激活调试程序集。`.ai_debug/config.json` 管理调试设置；旧 `debug_enabled` 不再生效。详见 [AIDebug s&box 手册](https://github.com/RailgunHamster/AIDebug/tree/main/Sbox)。
 
 ### 2.2 HTTP MCP
 
