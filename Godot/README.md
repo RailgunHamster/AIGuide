@@ -1,20 +1,30 @@
 # AI Guide for Godot（C# 编辑器插件）
 
 让任意外部 AI Agent 通过 MCP **看见、操作、并可视化指引** Godot 编辑器的 UI。
-插件自带 MCP 服务（Streamable HTTP），零外部依赖。
+插件自带 MCP 服务（Streamable HTTP），由已集成的 Godot .NET 编辑器自动加载。
 
-## 要求
-- **Godot 4.8 .NET 版编辑器**（插件是 C# 写的），游戏项目必须是 C# 工程（有 `.csproj`，目标框架 `net10.0`）。
-  纯 GDScript 工程需要先建 C# 工程：编辑器菜单 项目 → 工具 → C# → 创建 C# 解决方案。
+## 直接使用
+
+使用已集成 AIGuide 的 **Godot 4.8 .NET 编辑器**打开任意项目，内置入口会自动创建并启用插件：
+
+```powershell
+& "C:/path/to/integrated-godot/bin/godot.windows.editor.x86_64.mono.exe" --editor --path "C:/path/to/MyGame"
+```
+
+- GDScript 和 C# 项目均可直接使用。GDScript 项目不需要 `.csproj` 或 C# 宿主。
+- 项目无需添加 `addons/ai_guide`、修改插件启用列表或执行安装脚本。AIGuide 程序集已经随编辑器构建并提供。
+- 普通使用者无需 Python、.NET SDK 或项目构建步骤来加载内置 AIGuide；开发 C# 游戏自身仍按 Godot 的 C# 开发要求配置工具链。编辑器本身仍需对应的 .NET 运行时。
+- 顶部菜单栏「帮助」右边出现 **AI** 菜单，输出面板显示 `MCP 服务已启动：http://127.0.0.1:7650/mcp`。
+- 端口：编辑器设置 `ai_guide/server/port`，或环境变量 `GODOT_AI_GUIDE_PORT`。
+
+此方式需要编辑器中已有原生启动入口和 `GodotSharp/Tools/Godot.AIGuide.dll`。当前工作区的 Godot 引擎已完成接入。普通官方发行版不包含该入口，仅检出本仓库不会让官方编辑器自动加载 C# 插件。
+
+## 引擎集成与兼容
+
+- 内置程序集由引擎维护者构建，插件源码来自本仓库 `Godot/addons/ai_guide`，与游戏项目的程序集独立。
+- 历史项目若保留项目级 `addons/ai_guide`，内置入口会让出插件实例，避免重复服务。迁移到内置方式时，由项目依赖管理移除旧插件来源和启用项。
 - 建议使用打了补丁的引擎：[`patches/ai_guide_synthetic_hover.patch`](patches/README.md)。不打补丁时按钮类控件只在系统光标位于该窗口内时才响应合成点击，插件会临时移动你的真实光标去点（你同时在用鼠标时可能失败）；打补丁后完全不碰光标。
 - 所有代码都包在 `#if TOOLS` 里，只在编辑器里编译，不进入导出的游戏。
-
-## 安装
-1. 把本仓库的 `Godot/addons/ai_guide` 放进游戏项目的 `addons/ai_guide`：直接拷贝，或用任意依赖管理方式引用这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
-2. 编译一次 C# 工程（编辑器右上角的“构建”，或 `dotnet build`）。
-3. 项目设置 → 插件 → 启用 **AI Guide**。输出面板显示 `MCP 服务已启动：http://127.0.0.1:7650/mcp`。
-   - 端口：编辑器设置 `ai_guide/server/port`，或环境变量 `GODOT_AI_GUIDE_PORT`。
-   - 顶部菜单栏「帮助」右边会多一个 **AI** 菜单：引导教程 / 停止当前引导 / 复制 MCP 地址。
 
 ## 连接 Agent
 - **Claude Code**：`claude mcp add --transport http godot-guide http://127.0.0.1:7650/mcp`
@@ -62,9 +72,19 @@
 进入某一步时条件已经成立的，不会自动跳过，而是提示用户点一下继续。步骤带 `clipboard` 时，进入该步会自动把内容放进剪贴板。
 
 ## 开发
+- 本节面向插件或引擎维护者。内置模式修改源码后，重新构建引擎的托管程序集并重启编辑器；`ai_guide_reload` 的项目构建路径用于项目级插件开发。
 - 本目录本身是一个最小 Godot C# 工程（`project.godot` + `AIGuide.Godot.csproj`），用来编译和调试插件：`dotnet build AIGuide.Godot.csproj`。
 - 在游戏里调试：把游戏的 `addons/ai_guide` 指向本仓库的工作副本（链接或同步），改完 `.cs` 后调用 `ai_guide_reload`（或在编辑器里点“构建”）。
 - C# 程序集重新加载时，Godot 会保留插件对象、替换代码：插件实现了 `ISerializationListener`，在 `OnBeforeSerialize` 里拆掉全部运行时对象（MCP 服务、覆盖层、菜单），`OnAfterDeserialize` 再按新代码重建。
 - 正在执行的工具请求会在重新加载时被丢弃，HTTP 服务端与文件桥都有 30 秒兜底，超时会返回错误。
 
 需求与优先级见 [ROADMAP.md](ROADMAP.md)。
+
+## 免安装回归
+
+```powershell
+$env:AIGUIDE_TEST_EDITOR = "C:/path/to/integrated-godot/bin/godot.windows.editor.x86_64.mono.exe"
+python Godot/tests/test_builtin.py
+```
+
+这是维护者测试，使用独立临时项目，分别验证纯 GDScript 与现有 C# 工程无需项目插件即可启动内置 MCP，并检查工具列表、项目路径和项目文件。C# 用例需要 .NET SDK 来构建测试工程；普通使用者无需执行这些步骤。

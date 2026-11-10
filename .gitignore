@@ -10,3 +10,6 @@ obj/
 .ai_guide/
 # s&box local builds, checkpoints and screenshots
 /Sbox/Art/build/
+# Python test artifacts
+__pycache__/
+*.py[cod]

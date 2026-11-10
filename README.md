@@ -15,9 +15,9 @@
 | [`Godot/`](Godot/README.md) | Godot 4.8（.NET 版编辑器，C# 插件） | 可用 |
 | [`Sbox/`](Sbox/README.md) | s&box Windows x64（项目编辑器插件，含 Hammer 原生 Qt 界面） | 可用 |
 
-## 在游戏项目里使用（以 Godot 为例）
+## 使用方式
 
-插件就是 `Godot/addons/ai_guide` 这一个目录，放进游戏项目的 `addons/ai_guide` 即可：直接拷贝，或者用你习惯的依赖管理方式引用本仓库的这个子目录（建议固定到发布的版本标签，如 `godot-v0.2.1`）。
+Godot 使用已集成 AIGuide 的 Godot 4.8 .NET 编辑器：打开项目后自动加载，引导菜单和 MCP 服务直接可用。GDScript、C# 项目都无需安装项目插件，GDScript 项目无需创建 C# 宿主，也无需运行 Python 安装器。内置程序集随编辑器提供；普通使用者无需为 AIGuide 编译项目。
 
 详见 [Godot/README.md](Godot/README.md)。
 
@@ -26,3 +26,4 @@ s&box 使用 `Sbox/.sbproj` 标准 Library，由 Verso 将本仓库的 `Sbox/` �
 ## 仓库约定
 - 不放游戏文件、令牌和编辑器缓存（`.godot/` 等）。
 - 引擎改动以补丁形式放在各引擎目录的 `patches/` 下，插件在未打补丁的官方引擎上也能工作（有降级行为，见各自 README）。
+- Godot 的免安装入口依赖集成编辑器中的原生引导和 `Godot.AIGuide.dll`；官方发行版不会因检出本仓库而自动获得该入口。引擎集成和插件开发由维护者完成。
