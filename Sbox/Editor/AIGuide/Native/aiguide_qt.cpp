@@ -120,7 +120,9 @@ public:
 class Bridge:public QObject {
 public:
     QHash<QObject*,int> ids;QHash<QString,Element> refs;int seq=0;
-    QSet<const QEvent*> synthetic;QJsonArray events,records,steps;QJsonObject context,lastGuide;QHash<QObject*,qint64> committedAt;
+    QSet<const QEvent*> synthetic;QJsonArray events,records,steps;QJsonObject context,lastGuide;
+    struct FieldCommit { qint64 time=0; QString text; };
+    QHash<QObject*,FieldCommit> fieldCommits;
     QHash<QWidget*,QPointer<Overlay>> overlays;QPointer<QWidget>bubble;QPointer<QLabel>message;
     QJsonArray highlights;QString markText,title,state="idle";int step=0;bool dim=true; qint64 markUntil=0,entered=0,pendingClick=0,nextFileCheck=0,nextScroll=0;int scrollTries=0;bool preSatisfied=false,manualConfirmation=false,restartArmed=false,fallbackUsed=false,prefillDone=false;QString targetError;Element currentElement;
     // Per-step target cache. Resolving a query walks the editor UI tree; doing that several times per
@@ -130,10 +132,11 @@ public:
     struct Memo{Element e;QString error;};QHash<QString,Memo> memo;int memoDepth=0;bool ticking=false;QVector<Element> highlightCache;qint64 highlightAt=0;qint64 lastClickTime=-1;QPoint lastClickPos;
     struct MemoScope{Bridge*b;explicit MemoScope(Bridge*bridge):b(bridge){if(b->memoDepth++==0)b->memo.clear();}~MemoScope(){if(--b->memoDepth==0)b->memo.clear();}};
     QTimer timer;bool replay=false;int eventSequence=0,actionSequence=0;QHash<int,QJsonObject> actionResults;
+    Qt::MouseButtons acceptedPresses, blockedPresses;
     QPointer<QWidget>fixture,secondFixture,fileFixture,hovered,presentedWindow;bool activationSucceeded=false,dialogOverride=false,previousDialogPolicy=false,rehearsing=false;
     Bridge(){qApp->installEventFilter(this);connect(&timer,&QTimer::timeout,this,[this]{tick();});timer.start(80);}
     ~Bridge(){clear();}
-    QString ref(Element e){if(!e.w)return {};int id=ids.value(e.w,0);if(!id){id=++seq;ids[e.w]=id;connect(e.w,&QObject::destroyed,this,[this,obj=e.w.data()]{ids.remove(obj);committedAt.remove(obj);});}QString r="e"+QString::number(id);if(e.kind!="control"){r+='.'+e.kind+':';if(e.index.isValid()){QStringList rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(QString::number(i.row()));r+=rows.join(',')+':'+QString::number(e.index.column());}else if(e.action)r+=QString::number(quintptr(e.action.data()),16);else r+=QString::number(e.graphic?e.graphic:e.item);}refs[r]=e;return r;}
+    QString ref(Element e){if(!e.w)return {};int id=ids.value(e.w,0);if(!id){id=++seq;ids[e.w]=id;connect(e.w,&QObject::destroyed,this,[this,obj=e.w.data()]{ids.remove(obj);fieldCommits.remove(obj);});}QString r="e"+QString::number(id);if(e.kind!="control"){r+='.'+e.kind+':';if(e.index.isValid()){QStringList rows;for(auto i=QModelIndex(e.index);i.isValid();i=i.parent())rows.prepend(QString::number(i.row()));r+=rows.join(',')+':'+QString::number(e.index.column());}else if(e.action)r+=QString::number(quintptr(e.action.data()),16);else r+=QString::number(e.graphic?e.graphic:e.item);}refs[r]=e;return r;}
     QList<QWidget*> roots(){auto list=qApp->topLevelWidgets();list.erase(std::remove_if(list.begin(),list.end(),[](QWidget*w){return own(w)||w->windowType()==Qt::ToolTip;}),list.end());std::sort(list.begin(),list.end(),[](QWidget*a,QWidget*b){return (QString(a->metaObject()->className())+a->windowTitle())<(QString(b->metaObject()->className())+b->windowTitle());});return list;}
     bool classMatch(QWidget*w,const QJsonObject&q){auto c=str(q,"class");if(c.isEmpty())return true;QString name=w->metaObject()->className();if(yes(q,"exact")?name==c:name.contains(c,Qt::CaseInsensitive))return true;return w->inherits(c.toUtf8().constData())||w->managedClassNames.contains(c);}
     bool widgetMatches(QWidget*w,const QJsonObject&q){return (str(q,"name").isEmpty()||w->objectName()==str(q,"name"))&&classMatch(w,q);}
@@ -161,6 +164,7 @@ public:
     bool match(const Element&e,const QJsonObject&q){
         if(!e.w)return false;auto kind=str(q,"kind","any");if(kind!="any"&&e.kind!=kind)return false;
         if(!widgetMatches(e.w,q))return false;
+        if(q.contains("nth")&&identity(e.w)["nth"]!=q["nth"])return false;
         bool exact=yes(q,"exact");auto contains=[&](const QString&have,const QString&want){return want.isEmpty()||(exact?have==want:have.contains(want,Qt::CaseInsensitive));};
         auto wanted=str(q,"text").trimmed();if(!wanted.isEmpty()){auto label=e.label().trimmed();if(e.kind=="menu"){label=uiLabel(label);wanted=uiLabel(wanted);}if(!contains(label,wanted))return false;}
         if(!str(q,"tooltip").isEmpty()&&!contains(e.w->toolTip(),str(q,"tooltip")))return false;
@@ -249,12 +253,89 @@ public:
         return {{"ok",true},{"ref",ref(e)},{"locator",locator(e)},{"class",e.w->metaObject()->className()},{"name",e.w->objectName()},{"kind",e.kind},{"text",e.label().left(500)},{"tooltip",e.w->toolTip()},{"rect",rectJson(e.rect())},{"visible",e.visible()},{"enabled",e.w->isEnabled()&&(!e.action||e.action->isEnabled())},{"focused",e.w->hasFocus()},{"window",ref(Element{e.w->window()})},{"hidden_because",why},{"property",propertyOf(e.w)},{"value",valueOf(e.w)},{"managed_classes",QJsonArray::fromStringList(e.w->managedClassNames)}};}
     QJsonObject brief(Element e){if(!e.w)return {};return {{"ref",ref(e)},{"class",e.w->metaObject()->className()},{"name",e.w->objectName()},{"kind",e.kind},{"text",e.label().left(200)},{"window",e.w->window()->windowTitle()}};}
     void log(QJsonObject o){o["at"]=QDateTime::currentMSecsSinceEpoch();o["seq"]=++eventSequence;events.append(o);while(events.size()>100)events.removeFirst();}
+    bool clicksRestricted()const
+    {
+        return state=="running"&&step<steps.size()&&yes(steps[step].toObject(),"restrict_clicks",yes(lastGuide,"restrict_clicks"));
+    }
+    bool clickInside(const Element& element,QWidget* receiver,const QPoint& position)const
+    {
+        if(!element.visible())return false;
+        if(element.kind=="control")return element.w==receiver||element.w->isAncestorOf(receiver);
+        return element.w->window()==receiver->window()&&element.rect().contains(position);
+    }
+    bool clickWithinRule(QJsonValue rule,QWidget* receiver,const QPoint& position)
+    {
+        if(!receiver)return false;
+        const auto query=rule.toObject();
+        if(str(query,"kind")!="control")return clickInside(resolve(rule),receiver,position);
+        for(auto widget=receiver;widget;widget=widget->parentWidget())
+        {
+            if(match(Element{widget},query)&&
+               (!query.contains("under")||clickWithinRule(query["under"],widget->parentWidget(),position)))return true;
+        }
+        return false;
+    }
+    bool clickAllowed(QWidget* receiver,const QPoint& position)
+    {
+        const auto current=steps[step].toObject();
+        MemoScope memoScope(this);
+        const auto target=targetFor(current,!cachedTarget.visible());
+        if(!fallbackUsed&&clickInside(target,receiver,position))return true;
+        for(const auto& rule:current["allow"].toArray())
+        {
+            try { if(clickWithinRule(rule,receiver,position))return true; }
+            catch(const std::exception&) { /* An unresolved exception grants no access. */ }
+        }
+        // A blocking warning or native confirmation must still be dismissible.
+        auto modal=qApp->activeModalWidget();
+        return modal&&(modal==receiver||modal->isAncestorOf(receiver))&&
+            (!target.w||(modal!=target.w&& !modal->isAncestorOf(target.w)));
+    }
+    bool blockMouse(QObject* receiver,QEvent* event)
+    {
+        if(synthetic.contains(event))return false;
+        const auto type=event->type();
+        const auto restricted=clicksRestricted();
+        if(type==QEvent::MouseMove)return bool(static_cast<QMouseEvent*>(event)->buttons()&blockedPresses);
+        if(!restricted&&acceptedPresses==Qt::NoButton&&blockedPresses==Qt::NoButton)return false;
+        const auto contextMenu=type==QEvent::ContextMenu;
+        auto mouse=contextMenu?nullptr:static_cast<QMouseEvent*>(event);
+        auto menu=contextMenu?static_cast<QContextMenuEvent*>(event):nullptr;
+        if(menu&&menu->reason()!=QContextMenuEvent::Mouse)return false;
+        const auto position=mouse?mouse->globalPos():menu->globalPos();
+        auto widget=qobject_cast<QWidget*>(receiver);
+        if(!widget&&qobject_cast<QWindow*>(receiver))widget=QApplication::widgetAt(position);
+        const auto button=mouse?mouse->button():Qt::NoButton;
+        if(type==QEvent::MouseButtonRelease)
+        {
+            if(blockedPresses.testFlag(button)){blockedPresses.setFlag(button,false);return true;}
+            if(acceptedPresses.testFlag(button)){acceptedPresses.setFlag(button,false);return false;}
+        }
+        if(!restricted||!widget||own(widget))return false;
+        const auto allowed=clickAllowed(widget,position);
+        if(type==QEvent::MouseButtonPress||type==QEvent::MouseButtonDblClick)
+        {
+            acceptedPresses.setFlag(button,allowed);
+            blockedPresses.setFlag(button,!allowed);
+            if(!allowed)log({{"event","click_blocked"},{"index",step}});
+        }
+        return !allowed;
+    }
     bool eventFilter(QObject*obj,QEvent*event)override{
         auto type=event->type();
+        if(type==QEvent::MouseButtonPress||type==QEvent::MouseButtonRelease||type==QEvent::MouseButtonDblClick||
+           type==QEvent::ContextMenu||(type==QEvent::MouseMove&&blockedPresses!=Qt::NoButton))
+            if(blockMouse(obj,event))return true;
         // Installed on qApp: return before any per-widget work for the events we do not care about.
         if(type!=QEvent::FocusOut&&type!=QEvent::KeyRelease&&type!=QEvent::MouseButtonRelease&&type!=QEvent::KeyPress)return false;
         auto w=qobject_cast<QWidget*>(obj);if(!w||own(w))return false;
-        if(qobject_cast<QLineEdit*>(w)&&(event->type()==QEvent::FocusOut||(event->type()==QEvent::KeyRelease&&(static_cast<QKeyEvent*>(event)->key()==Qt::Key_Return||static_cast<QKeyEvent*>(event)->key()==Qt::Key_Enter)))){ref(Element{w});committedAt[w]=QDateTime::currentMSecsSinceEpoch();}
+        if(auto edit=qobject_cast<QLineEdit*>(w)){
+            const auto key=type==QEvent::KeyRelease?static_cast<QKeyEvent*>(event)->key():0;
+            if(type==QEvent::FocusOut||key==Qt::Key_Return||key==Qt::Key_Enter){
+                ref(Element{w});
+                fieldCommits[w]={QDateTime::currentMSecsSinceEpoch(),edit->text()};
+            }
+        }
         bool agent=synthetic.contains(event);
         if(type==QEvent::MouseButtonRelease){
             auto mouse=static_cast<QMouseEvent*>(event);
@@ -344,7 +425,28 @@ public:
         if(o.contains("all")){auto conditions=o["all"].toArray();if(conditions.isEmpty())return false;for(auto c:conditions)if(!condition(c))return false;return true;}
         if(o.contains("not"))return !condition(o["not"]);
         for(auto kind:{"exists","visible"})if(o.contains(kind)){auto e=resolve(o[kind],QString(kind)=="exists");return e.w&&(QString(kind)=="exists"||e.visible());}
-        for(auto kind:{"text_contains","text_equals","number_equals","tooltip_contains"})if(o.contains(kind)){auto s=o[kind].toObject();auto e=resolve(s["target"],true);if(!e.w||(yes(s,"committed")&&committedAt.value(e.w,0)<entered))return false;if(QString(kind)=="number_equals"){bool ok=false;double value=e.label().toDouble(&ok);return ok&&qAbs(value-s["value"].toDouble())<0.0001;}auto have=contentText(QString(kind)=="tooltip_contains"?e.w->toolTip():e.label()),want=contentText(str(s,"text"));return QString(kind)=="text_equals"?have==want:have.contains(want);}
+        for(QString kind:{"text_contains","text_equals","number_equals","tooltip_contains"})if(o.contains(kind)){
+            const auto spec=o[kind].toObject();
+            const auto element=resolve(spec["target"],true);
+            if(!element.w)return false;
+            const auto requireCommit=yes(spec,"committed");
+            const auto commit=fieldCommits.value(element.w);
+            if(requireCommit&&commit.time<entered)return false;
+            const auto value=element.label();
+            if(kind=="number_equals"){
+                const auto expected=spec["value"].toDouble();
+                const auto matches=[expected](const QString& input){
+                    bool ok=false;
+                    const auto number=input.toDouble(&ok);
+                    return ok&&qAbs(number-expected)<0.0001;
+                };
+                return matches(value)&&(!requireCommit||matches(commit.text));
+            }
+            if(requireCommit&&contentText(value)!=contentText(commit.text))return false;
+            const auto have=contentText(kind=="tooltip_contains"?element.w->toolTip():value);
+            const auto want=contentText(str(spec,"text"));
+            return kind=="text_equals"?have==want:have.contains(want);
+        }
         if(o.contains("context")){auto s=o["context"].toObject();QJsonValue value=context;for(auto part:str(s,"path").split('.'))value=value.toObject()[part];if(value.isUndefined()||value.isNull())return false;return s.contains("equals")?value==s["equals"]:value.toString().contains(str(s,"contains"));}
         for(auto k:{"selected","inspecting"})if(o.contains(k)){for(auto v:context[k].toArray())if(v.toString()==o[k].toString())return true;return false;}
         if(o.contains("main_screen"))return context["main_screen"]==o["main_screen"];
@@ -416,6 +518,7 @@ public:
             while(root&&own(root))root=root->parentWidget();
             if(root)root=root->window();
             caption=QString("%1  %2/%3\n%4%5").arg(title).arg(step+1).arg(steps.size()).arg(str(s,"text")).arg(blocked?"\n当前对话框阻挡目标，请先完成或取消它；教程会等待。":manualConfirmation?"\n当前条件已满足或已返回此步，点击高亮处或下一步继续。":(!e.w||!e.visible()?"\n等待目标显露… "+targetError:""));
+            if(clicksRestricted())caption+="\n本步仅允许点击相关控件。";
         }else if(!marks.isEmpty())caption=markText;
         QHash<QWidget*,QVector<QPair<QRect,QString>>> grouped;
         for(auto mark:marks)if(mark.first.visible())grouped[mark.first.w->window()].append({mark.first.rect(),mark.second});

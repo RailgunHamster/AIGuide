@@ -319,7 +319,7 @@
             "type": "object",
             "properties": {
               "target": {
-                "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,visible_only}. Rectangles are screen coordinates in Qt logical pixels; input x/y are window client coordinates. Locators follow native widget ancestry and sibling ordinals; re-discover after a layout redesign. A missing parent scope never falls back to global search; Qt base-class names are supported.",
+                "description": "Live eN ref, persistent /qt/ locator from ui_describe, or an unambiguous query {text,class,name,kind,under,label,nth,visible_only}. Use nth for the zero-based position among siblings of the same concrete class and object name. A missing parent scope never falls back to global search; Qt base-class names are supported.",
                 "anyOf": [
                   {
                     "type": "string"
@@ -332,6 +332,20 @@
               "text": {
                 "type": "string",
                 "description": "Short instruction shown in the callout."
+              },
+              "restrict_clicks": {
+                "type": "boolean",
+                "description": "Override the guide's mouse click restriction for this step."
+              },
+              "allow": {
+                "type": "array",
+                "description": "Additional mouse targets for a restricted step. Control queries also allow their child widgets.",
+                "items": {
+                  "anyOf": [
+                    { "type": "string" },
+                    { "type": "object" }
+                  ]
+                }
               },
               "until": {
                 "description": "click (default), manual, or {any:[conditions]}, {all:[conditions]}, {not:condition}, {exists:target}, {visible:target}, {text_contains:{target,text}}, {text_equals:{target,text,committed:true}}, {number_equals:{target,value,committed:true}}, {tooltip_contains:{target,text}}, {key:\"Ctrl+S\"}, {selected:\"GUID|name\"}, {inspecting:\"GUID|name\"}, {main_screen:\"scene name|Hammer\"}, {context:{path:\"hammer.selection_mode\",equals:\"Faces\"}}, {file_saved:{path:\"Assets/example.vmat\",ext:\"vmat\",contains:\"text\"}}. Initially satisfied conditions and previous steps require click/next confirmation. File checks are bounded and throttled.",
@@ -384,6 +398,11 @@
           "type": "boolean",
           "default": true,
           "description": "Dim everything except the current target."
+        },
+        "restrict_clicks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow mouse clicks only on the current target, step allow rules, guide navigation and blocking dialogs."
         },
         "auto_scroll": {
           "type": "boolean",

@@ -112,6 +112,7 @@ try{
     Test 'committed values wait for Enter and project-relative saved result' {
         Act paste $edit.ref @{text='before'}
         Tool ui_guide @{steps=@(@{target=$edit.locator;text='提交后再继续';until=@{text_equals=@{target=$edit.locator;text='committed';committed=$true}}},@{target=$edit.locator;text='保存准确文件';project_path=('Tools/'+[IO.Path]::GetFileName($created));until=@{file_saved=@{path=('Tools/'+[IO.Path]::GetFileName($created));contains=$token}}})}
+        Act key $edit.ref @{keys='Enter'};Start-Sleep -Milliseconds 300;Assert ((Tool guide_status).index -eq 0) 'incorrect submitted value advanced'
         Act paste $edit.ref @{text='committed'};Start-Sleep -Milliseconds 300;Assert ((Tool guide_status).index -eq 0) 'typing advanced before commit'
         Act key $edit.ref @{keys='Enter'};Wait-Guide running 1
         $clip=Exec 'return Editor.EditorUtility.Clipboard.Paste();'
@@ -190,6 +191,27 @@ try{
             Assert ((Tool guide_status).index -eq 0) 'cancelling the dialog advanced the guide'
         }
         finally { Native test_close_file_dialog; Tool guide_control @{action='stop'} }
+    }
+    Test 'restricted tutorial clicks block unrelated controls and allow explicit targets' {
+        $count=@{name='guideCount';kind='control'}
+        $before=[int](Find-One $count).text.Split(':')[-1]
+        try {
+            Tool ui_guide @{restrict_clicks=$true;steps=@(
+                @{target=$edit.locator;text='仅允许输入';until='manual'},
+                @{target=$edit.locator;text='允许指定按钮';until='manual';allow=@(@{name='guideIncrement';kind='control'})}
+            )}
+            Native test_user_click @{target=$button.ref}
+            $state=Tool guide_status
+            Assert (([int](Find-One $count).text.Split(':')[-1] -eq $before) -and $state.log.event -contains 'click_blocked') 'unrelated button received the click'
+            Native test_user_click @{target=$edit.ref}
+            Assert ((Tool ui_describe @{target=$edit.ref}).focused) 'highlighted field did not receive the click'
+            Tool guide_control @{action='next'};Wait-Guide running 1
+            Native test_user_click @{target=$button.ref}
+            Assert ([int](Find-One $count).text.Split(':')[-1] -eq ($before+1)) 'explicitly allowed button did not receive the click'
+        }
+        finally { Tool guide_control @{action='stop'} }
+        Native test_user_click @{target=$button.ref}
+        Assert ([int](Find-One $count).text.Split(':')[-1] -eq ($before+2)) 'click restriction continued after leaving the guide'
     }
     Test 'guide waiting, live condition, prev and do_step' {
         Tool ui_guide @{steps=@(@{target=@{name='not-created-yet'};text='等待目标';until='manual'},@{target=$edit.locator;text='输入完成';until=@{text_contains=@{target=$edit.locator;text='done'}}},@{target=$button.locator;text='演示点击';action='click'})}

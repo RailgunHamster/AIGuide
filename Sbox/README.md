@@ -26,6 +26,8 @@ AIGuide/
 
 1.3.3 支持按步骤预填文件名和搜索框。保存仍需用户确认，已输入的文字会保留。
 
+1.3.4 允许教程限制点击范围。高亮目标、步骤明确允许的控件和教程导航按钮仍可操作。
+
 ## 标准 Library
 
 `Sbox/.sbproj` 声明 `railgunhamster.aiguide` Library。项目使用 Verso Git 依赖，将本仓库 `Sbox/` 映射到 `Libraries/AIGuide/`，固定到锁文件指定的提交。
