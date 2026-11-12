@@ -15,7 +15,7 @@ namespace AIGuide.Sbox;
 /// <summary>Project editor plugin. Native UI continues to work inside Qt modal loops.</summary>
 public static class GuideHost
 {
-    public const string Version = "1.3.0";
+    public const string Version = "1.3.2";
     private static readonly ConcurrentQueue<Action> main = new();
     private static GuideTransport transport;
     private static string root;
@@ -26,6 +26,13 @@ public static class GuideHost
     private static JsonArray recorded = new();
     private static JsonObject lastGuide;
     private static bool restartPending;
+    // Environment.TickCount64 of the last context push from EditorEvent.Frame. The background poller only
+    // pushes context itself while Frame is not running (Qt modal loops), instead of doubling the work.
+    private static long lastFrameContext;
+    private static long nextAnnotation;
+    private static DateTime nextNativeAttempt;
+    private static System.Reflection.FieldInfo allObjectsField;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ControlWidget,string> annotated=new();
     internal static string Root => root ?? Path.GetFullPath(Project.Current.GetRootPath());
     internal static string LibraryRoot => EditorUtility.Projects.GetAll()
         .FirstOrDefault(p => p.Config.FullIdent == "railgunhamster.aiguide")?.GetRootPath()
@@ -52,34 +59,44 @@ public static class GuideHost
         try
         {
             var current = Path.GetFullPath(Project.Current.GetRootPath());
-            if (root != current || !GuideNative.Loaded || (Config.B("enabled",true) && transport is null))
+            var changed=false;
+            if (root != current || (Config.B("enabled",true) && transport is null))
             {
                 transport?.Dispose(); transport=null; root=current; Directory.CreateDirectory(Data);
                 var path=Path.Combine(Data,"config.json");
                 Config=File.Exists(path)?JsonNode.Parse(File.ReadAllText(path)).AsObject():new JsonObject { ["enabled"]=true,["port"]=7660 };
-                GuideNative.Load(LibraryRoot, root);
                 if(Config.B("enabled",true)) { transport=new GuideTransport(Config.I("port",7660)); transport.Start(); }
-                File.WriteAllText(Path.Combine(Data,"session.json"),new JsonObject { ["pid"]=Environment.ProcessId,["url"]=Address,["version"]=Version,["project"]=root }.ToJsonString());
-                initializationError=null;
+                nextNativeAttempt=DateTime.MinValue;changed=true;
             }
-            GuideNative.Call("context", Context());
+            // The Qt adapter is optional for the transport: editor_state, editor_exec and the file bridge keep working, and the
+            // status reports why native UI is unavailable (e.g. an engine update shipped Qt DLLs without a verified profile).
+            // A failed load is retried every 10 s rather than every frame, because it hashes the engine's Qt DLLs.
+            if(!GuideNative.Loaded&&DateTime.UtcNow>=nextNativeAttempt)
+            {
+                var previous=GuideNative.LoadError;
+                try{GuideNative.Load(LibraryRoot, root);GuideNative.LoadError=null;}
+                catch(Exception e){GuideNative.LoadError=e.GetBaseException().Message;nextNativeAttempt=DateTime.UtcNow.AddSeconds(10);if(previous!=GuideNative.LoadError)Log.Warning("AI Guide native UI unavailable: "+GuideNative.LoadError);}
+                changed|=previous!=GuideNative.LoadError||GuideNative.Loaded;
+                initializationError=GuideNative.LoadError;
+            }
+            if(changed)File.WriteAllText(Path.Combine(Data,"session.json"),new JsonObject { ["pid"]=Environment.ProcessId,["url"]=Address,["version"]=Version,["project"]=root,["native_error"]=GuideNative.LoadError }.ToJsonString());
+            if(GuideNative.Loaded){GuideNative.Call("context", Context());Volatile.Write(ref lastFrameContext,Environment.TickCount64);}
         }
         catch(Exception e){initializationError=e.GetBaseException().Message;next=DateTime.UtcNow.AddSeconds(2);}
     }
     internal static async Task PollBackground()
     {
         if(!GuideNative.Loaded)return;
-        await Main(()=>GuideNative.Call("context",Context()));
-        foreach(var v in (await GuideNative.Async("events")).AsArray()){
+        if(Environment.TickCount64-Volatile.Read(ref lastFrameContext)>500)await Main(()=>GuideNative.Call("context",Context()));
+        // Only events newer than the last one handled; older adapters ignore "since" and return all.
+        foreach(var v in (await GuideNative.Async("events",new(){["since"]=lastEvent})).AsArray()){
             var e=v.AsObject();var id=e.I("seq");if(id<=lastEvent)continue;lastEvent=id;
             if(e.S("event")=="restart_requested"&&!restartPending){restartPending=true;try{await Restart();}finally{restartPending=false;}}
         }
     }
     internal static JsonObject Context()
     {
-        // Annotate managed inspector controls for the native Qt tree, including their child editors.
-        var objects=typeof(Editor.QObject).GetField("AllObjects",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic)?.GetValue(null) as System.Collections.IDictionary;
-        if(objects!=null)foreach(var control in objects.Values.OfType<ControlWidget>().ToArray())if(control.IsValid&&control.SerializedProperty is {} property){try{control.SetProperty("aiguideProperty",property.Name);control.SetProperty("aiguideValue",property.GetValue<object>()?.ToString()??"null");}catch{}}
+        AnnotateControls();
         var s=SceneEditorSession.Active;
         var selected=new JsonArray();
         if(s is not null)foreach(var o in s.Selection.OfType<GameObject>()){selected.Add(o.Id.ToString());selected.Add(o.Name);}
@@ -88,7 +105,27 @@ public static class GuideHost
         JsonObject hammer=null;if(Editor.MapEditor.Hammer.Open&&Editor.MapEditor.Hammer.ActiveMap is {} map){var nodes=Editor.MapEditor.Selection.All.ToArray();foreach(var node in nodes){if(GuideCompatibility.NodeId(node) is {} nodeId)selected.Add(nodeId.ToString());selected.Add(node.Name);}hammer=new(){["file"]=map.PathName,["modified"]=GuideCompatibility.HammerModified(typeof(Editor.MapEditor.Hammer)),["selection_mode"]=Editor.MapEditor.Selection.SelectMode.ToString(),["current_material"]=Editor.MapEditor.Hammer.CurrentMaterial?.ResourcePath,["selected"]=GJson.Node(nodes.Select(n=>new{NodeId=GuideCompatibility.NodeId(n),n.Name}))};}
         return new JsonObject { ["project"]=Root,["selected"]=selected,["main_screen"]=Editor.MapEditor.Hammer.Window?.IsActiveWindow==true?"Hammer":s?.Scene?.Name??"",["inspecting"]=inspecting,["scene"]=s?.Scene?.Source?.ResourcePath,["open_scenes"]=GJson.Node(SceneEditorSession.All.Select(x=>new{path=x.Scene?.Source?.ResourcePath,name=x.Scene?.Name,modified=x.HasUnsavedChanges})),["hammer"]=hammer,["playing"]=Game.IsPlaying };
     }
-    internal static JsonNode EditorState()=>new JsonObject { ["version"]=Version,["project"]=Root,["editor"]=Context(),["ui"]=GuideNative.Call("state"),["native"]=GuideNative.Call("info"),["transport"]=Address,["rehearsing"]=rehearsal!=null };
+    /// <summary>Annotate managed inspector controls for the native Qt tree, including their child editors.</summary>
+    /// <remarks>Reads every live ControlWidget's property value, so it runs at most once a second and only
+    /// touches Qt properties whose text changed (each SetProperty is a native call plus a Qt event).</remarks>
+    private static void AnnotateControls()
+    {
+        var now=Environment.TickCount64;if(now<nextAnnotation)return;nextAnnotation=now+1000;
+        allObjectsField??=typeof(Editor.QObject).GetField("AllObjects",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+        if(allObjectsField?.GetValue(null) is not System.Collections.IDictionary objects)return;
+        foreach(var control in objects.Values.OfType<ControlWidget>().ToArray())
+        {
+            if(!control.IsValid||control.SerializedProperty is not {} property)continue;
+            try
+            {
+                var name=property.Name;var value=property.GetValue<object>()?.ToString()??"null";var key=name+"\n"+value;
+                if(annotated.TryGetValue(control,out var previous)&&previous==key)continue;
+                control.SetProperty("aiguideProperty",name);control.SetProperty("aiguideValue",value);annotated.AddOrUpdate(control,key);
+            }
+            catch{}
+        }
+    }
+    internal static JsonNode EditorState()=>new JsonObject { ["version"]=Version,["project"]=Root,["editor"]=Context(),["ui"]=GuideNative.Loaded?GuideNative.Call("state"):null,["native"]=GuideNative.Loaded?GuideNative.Call("info"):new JsonObject{["error"]=GuideNative.LoadError},["transport"]=Address,["rehearsing"]=rehearsal!=null };
     private static string RecipeDir=>Path.Combine(Root,"Config","AIGuide","Recipes");
     private static string BuiltInRecipeDir=>Path.Combine(LibraryRoot,"Editor","AIGuide","Recipes");
     private static string RecipePath(string name)
@@ -216,10 +253,13 @@ public static class GuideHost
         }
     }
     [Menu("Editor","AI Guide/教程与状态","school")]
+    [Menu("Hammer","AI Guide/教程与状态","school")]
     public static void ShowPanel(){var w=new GuidePanel();w.Show();}
     [Menu("Editor","AI Guide/停止引导","stop")]
-    public static void StopGuide(){GuideNative.Call("clear");}
+    [Menu("Hammer","AI Guide/停止引导","stop")]
+    public static void StopGuide(){if(GuideNative.Loaded)GuideNative.Call("clear");}
     [Menu("Editor","AI Guide/复制 MCP 地址","link")]
+    [Menu("Hammer","AI Guide/复制 MCP 地址","link")]
     public static void CopyAddress(){EditorUtility.Clipboard.Copy(Address);}
 }
 

@@ -10,11 +10,11 @@ AI Guide 让本地 AI 读取编辑器界面、操作控件、标出按钮，并�
 
 团队项目将原 Git 仓库的 `Sbox/` 通过 Verso 依赖映射到 `Libraries/AIGuide/`，其中 `.sbproj` 声明标准 Library。成员获取完整更新后打开编辑器即可使用，无需脚本、IDE 或手动设置。s&box 自动编译 Library 自己的 `Editor/`，源码版本由 Verso 管理。
 
-原生适配 DLL 位于 Library 内的 `Editor/AIGuide/Native/`，与 `BuildInfo.json` 一同提供。加载时检查 DLL 哈希及 Qt 模块组合，运行缓存写主项目 `.ai_guide/`。兼容 Steam 官方 `26.10.27c`、LTN 当前构建和已验证的 railgunhamster 旧 Qt；缺少便利成员的旧 SDK 通过能力适配。
+原生适配 DLL 位于 Library 内的 `Editor/AIGuide/Native/`，与 `BuildInfo.json` 一同提供。加载时检查 DLL 哈希及 Qt 模块组合，运行缓存写主项目 `.ai_guide/`。支持 Steam 官方 `26.10.27c`、LTN `387a5b026` 和 `BuildInfo.json` 中记录的旧 Qt 组合。缺少便利成员的旧 SDK 通过能力适配。
 
 项目教程仍位于 `Config/AIGuide/Recipes/`，同名教程覆盖内置示例。旧项目部署目录可由主项目自己的 `Metadata.Compiler.IgnoreFolders` 排除；Library 使用独立编译配置。更新前保存并关闭编辑器，由 Verso 完成依赖获取后再打开，避免进程驻留原生模块继续使用旧版本。
 
-进入 `编辑器顶部 AI Guide → 教程与状态` 可查看 MCP 地址、启动已保存教程、停止引导。另有“复制 MCP 地址”和“停止引导”菜单。
+场景编辑器和 Hammer 顶部都提供 **AI Guide → 教程与状态**。在这里可启动当前项目的教程。两个窗口也都有“停止引导”和“复制 MCP 地址”菜单。
 
 默认本地地址为 `http://127.0.0.1:7660/mcp`。本机可创建 `.ai_guide/config.json`：
 

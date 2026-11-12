@@ -22,11 +22,13 @@ AIGuide/
 
 1.3.0 补齐 Godot 风格的交互流程：默认点击推进、操作条件检测、失效定位 fallback、返回步骤后的确认、滚动定位，以及整窗目标可见的边框。开始教程和切换步骤时自动呈现目标窗口；气泡提供“定位”按钮。教程作者可用 `open_assets` 打开所需地图/材质，`project_path` 在同事自己的工作区生成保存路径。可自动检测的操作应编写真实完成条件，不能把整篇教程写成手动下一步。
 
+1.3.2 合并了 railgunhamster 的教程性能改动，在 Hammer 顶部加入 **AI Guide** 菜单，并支持团队引擎 `387a5b026` 的 Qt 模块。教程缓存当前目标、降低控件树扫描频率，并只更新发生变化的检查器属性。原生层加载失败时，编辑器状态和文件桥仍可使用，界面会报告加载失败原因。
+
 ## 标准 Library
 
 `Sbox/.sbproj` 声明 `railgunhamster.aiguide` Library。项目使用 Verso Git 依赖，将本仓库 `Sbox/` 映射到 `Libraries/AIGuide/`，固定到锁文件指定的提交。
 
-成员只需完成 Verso 项目更新并打开编辑器，s&box 自动发现 Library、编译 `Editor/` 并显示 **AI Guide → 教程与状态**。不执行安装脚本，不需要 IDE 或 SDK。插件源码由 Library 独立管理。
+成员完成 Verso 项目更新并打开编辑器后，s&box 自动发现并编译 Library。场景编辑器和 Hammer 都可从 **AI Guide → 教程与状态**打开教程面板。插件源码由 Library 独立管理。
 
 C# 编译产物由编辑器生成，不入库。原生 Qt 适配 DLL 与验证信息随 Git 提供；它只在主项目 `.ai_guide/native-cache/` 中建立运行缓存。内置教程从 Library 读取，项目教程仍在 `Config/AIGuide/Recipes/`，同名项目教程优先。本机端口、会话和截图在 `.ai_guide/`，不共享。
 

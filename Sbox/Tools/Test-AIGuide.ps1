@@ -143,6 +143,16 @@ try{
     Test 'offscreen control auto-scrolls into view with bounded retries' {
         try{Native test_second_fixture;Tool ui_guide @{steps=@(@{target=@{name='guideScrolledEdit'};text='滚动定位';until='manual'})};Start-Sleep -Milliseconds 1200;$s=Tool guide_status;Assert (!$s.waiting -and $s.target.visible -and $s.target.name -eq 'guideScrolledEdit') 'offscreen target did not become visible'}finally{Tool guide_control @{action='stop'};Native test_close_second}
     }
+    Test 'tutorial waits for a hidden dialog to open' {
+        try{
+            Native test_second_fixture @{hidden=$true}
+            Tool ui_guide @{steps=@(@{target=@{name='guideSecondButton'};text='等待对话框';until='manual'})}
+            Tool guide_control @{action='locate'}
+            Start-Sleep -Milliseconds 350
+            Assert ((Tool guide_status).waiting) 'the guide did not wait for the hidden dialog'
+            Assert ((Tool ui_find @{name='guideSecondWindow';kind='control';visible_only=$true}).total -eq 0) 'locate opened a hidden dialog'
+        }finally{Tool guide_control @{action='stop'};Native test_close_second}
+    }
     Test 'blocking modal receives the guide and returns to the target after closing' {
         Tool ui_guide @{steps=@(@{target=$edit.locator;text='等待对话框';until='manual'})}
         try{
@@ -197,6 +207,15 @@ try{
     }
     if(!$SkipHammer){
       Test 'Hammer live Qt UI discovery' {$hammer=Exec 'return new { Open=Editor.MapEditor.Hammer.Open, File=Editor.MapEditor.Hammer.Open?Editor.MapEditor.Hammer.ActiveMap?.PathName:null };';Assert $hammer.Open 'Open a disposable map in Hammer before running the Hammer test';Assert ((Tool ui_find @{class='Hammer';visible_only=$true}).total -gt 0) 'Hammer Qt UI'}
+      Test 'Hammer AI Guide menu opens the tutorial panel' {
+        $menu=Find-One @{text='AI Guide';kind='menu';exact=$true;under=@{class='CQHammerMainWnd';kind='control';exact=$true}}
+        Act click $menu.ref
+        $entry=(Tool ui_find @{text='教程与状态';kind='menu';exact=$true;visible_only=$true}).elements
+        Assert ($entry.Count -eq 1) 'Hammer tutorial action'
+        Act click $entry[0].ref
+        try{Assert ((Tool ui_find @{class='GuidePanel';kind='control';visible_only=$true}).total -eq 1) 'Hammer tutorial panel'}
+        finally{Exec 'foreach(var w in Editor.Window.All.Where(w=>w.GetType().FullName=="AIGuide.Sbox.GuidePanel").ToArray())w.Close();return true;'}
+      }
       Test 'Hammer viewport remains stable and clickable under guide overlay' {
         $view=(Tool ui_find @{class='CQMapView';exact=$true;visible_only=$true}).elements|Select-Object -First 1;Assert ($null -ne $view) 'Hammer viewport'
         Act focus $view.ref;Tool ui_highlight @{target=$view.ref;text='Hammer 高亮回归';duration_ms=0};Start-Sleep -Milliseconds 200

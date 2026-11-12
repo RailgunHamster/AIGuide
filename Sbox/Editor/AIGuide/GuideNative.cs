@@ -19,6 +19,8 @@ internal static class GuideNative
     private static IntPtr library;
     [SkipHotload] private static InvokeManaged invoke;
     internal static bool Loaded => dispatch != null;
+    /// <summary>Why the last load failed; null once loaded.</summary>
+    internal static string LoadError;
     internal static void Load(string libraryRoot, string projectRoot)
     {
         if (dispatch != null) return;
@@ -50,7 +52,7 @@ internal static class GuideNative
     }
     internal static JsonNode Call(string command, JsonObject args = null)
     {
-        if (dispatch == null) throw new InvalidOperationException("AI Guide has not initialized yet.");
+        if (dispatch == null) throw new InvalidOperationException(LoadError is null ? "AI Guide has not initialized yet." : "AI Guide native UI is unavailable: " + LoadError);
         var response = dispatch(new JsonObject { ["command"] = command, ["args"] = args.Copy() ?? new JsonObject() }.ToJsonString());
         try
         {
