@@ -171,6 +171,26 @@ try{
         Assert ((Native test_dialog_policy) -eq $prior) 'dialog policy not restored'
         Tool rehearsal_start;Assert (Native test_dialog_policy) 'rehearsal dialog policy';Tool rehearsal_stop @{rollback=$false};Assert ((Native test_dialog_policy) -eq $prior) 'rehearsal policy not restored'
     }
+    Test 'file-name prefill waits for save and preserves the next user edit' {
+        $relative='Tools/prefill-'+$token+'.txt'
+        $expected=Join-Path $Project $relative
+        $field=@{name='fileNameEdit';class='QLineEdit';under=@{class='QFileDialog';kind='control'}}
+        try {
+            Tool ui_guide @{steps=@(@{target=$field;prefill=$true;project_path=$relative;text='核对文件名后保存';until=@{file_saved=@{path=$relative}}})}
+            Native test_file_dialog
+            Start-Sleep -Milliseconds 450
+            $input=Tool ui_describe @{target=$field}
+            Assert ($input.text.Replace('\','/') -eq $expected.Replace('\','/')) 'guide did not fill the full path'
+            Assert (!(Test-Path -LiteralPath $expected) -and (Tool guide_status).index -eq 0) 'prefill saved or advanced the guide'
+            Act paste $input.ref @{text='my-edit.txt'}
+            Start-Sleep -Milliseconds 650
+            Assert ((Tool ui_describe @{target=$field}).text -eq 'my-edit.txt') 'guide overwrote a later edit'
+            Native test_close_file_dialog
+            Start-Sleep -Milliseconds 350
+            Assert ((Tool guide_status).index -eq 0) 'cancelling the dialog advanced the guide'
+        }
+        finally { Native test_close_file_dialog; Tool guide_control @{action='stop'} }
+    }
     Test 'guide waiting, live condition, prev and do_step' {
         Tool ui_guide @{steps=@(@{target=@{name='not-created-yet'};text='等待目标';until='manual'},@{target=$edit.locator;text='输入完成';until=@{text_contains=@{target=$edit.locator;text='done'}}},@{target=$button.locator;text='演示点击';action='click'})}
         Assert ((Tool guide_status).waiting) 'waiting flag';Tool guide_control @{action='next'};Act paste $edit.ref @{text='done'};Wait-Guide running 2

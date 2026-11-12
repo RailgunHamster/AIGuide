@@ -136,6 +136,8 @@ Invoke-RestMethod 'http://127.0.0.1:7660/mcp' -Method Post `
 
 顶层 `activate_window` 默认 true，可关闭自动切窗。`open_assets` 是可选的项目资源路径列表，如 `maps/level1.vmap`，在捕获检查点后通过编辑器打开。每步 `project_path` 是主项目相对文件路径，进入时把当前同事机器上的完整路径放入剪贴板；普通 `clipboard` 用于贴图路径等固定文本。共享教程不要保存作者盘符、用户名或临时 `eN` 引用。
 
+从 1.3.3 起，步骤可设置 `"prefill": true`，让教程把 `project_path` 或 `clipboard` 的值填入可见、可编辑且唯一定位的单行输入框。每步只预填一次，保留用户已改过的文字。返回上一项时也保留现有内容。另存为仍由用户点击 Save，教程可用 `file_saved` 检查实际保存结果。
+
 教程与演练期间临时使用 Qt 风格文件对话框，以便高亮文件名、保存等控件；停止或完成后恢复之前的对话框设置。
 
 默认由用户点击目标完成。AI 的合成点击不会冒充用户点击；演示用 `guide_control:{action:"do_step"}`，动作可在步骤的 `action` 中指定。

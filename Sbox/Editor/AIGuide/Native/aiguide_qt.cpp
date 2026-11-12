@@ -122,7 +122,7 @@ public:
     QHash<QObject*,int> ids;QHash<QString,Element> refs;int seq=0;
     QSet<const QEvent*> synthetic;QJsonArray events,records,steps;QJsonObject context,lastGuide;QHash<QObject*,qint64> committedAt;
     QHash<QWidget*,QPointer<Overlay>> overlays;QPointer<QWidget>bubble;QPointer<QLabel>message;
-    QJsonArray highlights;QString markText,title,state="idle";int step=0;bool dim=true; qint64 markUntil=0,entered=0,pendingClick=0,nextFileCheck=0,nextScroll=0;int scrollTries=0;bool preSatisfied=false,manualConfirmation=false,restartArmed=false,fallbackUsed=false;QString targetError;Element currentElement;
+    QJsonArray highlights;QString markText,title,state="idle";int step=0;bool dim=true; qint64 markUntil=0,entered=0,pendingClick=0,nextFileCheck=0,nextScroll=0;int scrollTries=0;bool preSatisfied=false,manualConfirmation=false,restartArmed=false,fallbackUsed=false,prefillDone=false;QString targetError;Element currentElement;
     // Per-step target cache. Resolving a query walks the editor UI tree; doing that several times per
     // 80 ms tick starved Hammer/material editor of GUI time (stalls, "not responding").
     int cachedStep=-1;qint64 cachedAt=0,nextCondition=0;Element cachedTarget;QPointer<QWidget>cachedScope;QString cachedError;bool cachedFallback=false;
@@ -360,7 +360,25 @@ public:
         }
         return false;
     }
-    void enterStep(bool previous=false){invalidateTarget();MemoScope scope(this);dialogPolicy();entered=QDateTime::currentMSecsSinceEpoch();pendingClick=0;scrollTries=0;nextScroll=0;nextFileCheck=0;preSatisfied=false;manualConfirmation=previous;presentedWindow=nullptr;activationSucceeded=false;currentElement={};targetError.clear();if(step<steps.size()){try{preSatisfied=condition(steps[step].toObject()["until"]);}catch(...){}manualConfirmation=manualConfirmation||preSatisfied;auto s=steps[step].toObject();if(s.contains("project_path"))qApp->clipboard()->setText(QDir::toNativeSeparators(projectFile(str(s,"project_path"))));else if(s.contains("clipboard"))qApp->clipboard()->setText(str(s,"clipboard"));}log({{"event","step_enter"},{"index",step}});}
+    QString stepInput(const QJsonObject& s)
+    {
+        return s.contains("project_path") ? QDir::toNativeSeparators(projectFile(str(s,"project_path"))) : str(s,"clipboard");
+    }
+    void prefill(const QJsonObject& s, const Element& target)
+    {
+        if(prefillDone||fallbackUsed||!yes(s,"prefill")||!target.visible())return;
+        auto field=qobject_cast<QLineEdit*>(target.w.data());
+        if(!field||!field->isEnabled()||field->isReadOnly())return;
+        prefillDone=true;
+        if(field->isModified())return; // Keep text the user already edited.
+        const auto value=stepInput(s);
+        if(value.isEmpty()||field->text()==value)return;
+        // Insertion updates validators and search widgets. It does not focus, submit, or close the dialog.
+        field->selectAll();
+        field->insert(value);
+        log({{"event","prefill"},{"index",step}});
+    }
+    void enterStep(bool previous=false){invalidateTarget();MemoScope scope(this);dialogPolicy();entered=QDateTime::currentMSecsSinceEpoch();pendingClick=0;scrollTries=0;nextScroll=0;nextFileCheck=0;preSatisfied=false;manualConfirmation=previous;prefillDone=previous;presentedWindow=nullptr;activationSucceeded=false;currentElement={};targetError.clear();if(step<steps.size()){auto s=steps[step].toObject();try{preSatisfied=condition(s["until"]);}catch(...){}manualConfirmation=manualConfirmation||(preSatisfied&&!yes(s,"prefill"));if(s.contains("project_path")||s.contains("clipboard"))qApp->clipboard()->setText(stepInput(s));}log({{"event","step_enter"},{"index",step}});}
     void advance(QString why){if(state!="running")return;log({{"event","advanced"},{"index",step},{"how",why}});step++;if(step>=steps.size()){state="completed";dialogPolicy();clearOverlays();if(bubble)bubble->hide();}else enterStep();}
     void clearOverlays(){for(auto o:overlays)if(o)o->hide();}
     void clear(){clearOverlays();if(bubble)bubble->hide();highlights={};highlightCache.clear();state="stopped";dialogPolicy();}
@@ -390,9 +408,10 @@ public:
         if(state=="running"&&step<steps.size()){
             auto now=QDateTime::currentMSecsSinceEpoch();if(pendingClick&&now-pendingClick>=120){advance("click");return;}
             auto s=steps[step].toObject();auto e=targetFor(s);currentElement=e;present(e.w?e.w->window():cachedScope.data());
+            auto modal=qApp->activeModalWidget();bool blocked=e.w&&modal&&modal!=e.w->window()&&!modal->isAncestorOf(e.w);
+            if(!blocked)prefill(s,e);
             // Conditions may walk the UI too; four checks a second are plenty for a human-paced tutorial.
             if(!manualConfirmation&&now>=nextCondition){nextCondition=now+250;try{if(condition(s["until"])){advance("condition");return;}}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}}
-            auto modal=qApp->activeModalWidget();bool blocked=e.w&&modal&&modal!=e.w->window()&&!modal->isAncestorOf(e.w);
             if(e.w&&e.visible()&&!blocked){marks.append({e,QString::number(step+1)});root=e.w->window();lastGuide["waiting"]=false;}else{lastGuide["waiting"]=true;if(e.w&&!blocked&&yes(lastGuide,"auto_scroll",true)&&scrollTries<3&&now>=nextScroll){++scrollTries;nextScroll=now+300;scrollIntoView(e);}root=modal?modal:qApp->activeWindow();if(blocked){present(modal);marks.append({Element{modal},QString::number(step+1)});}}
             while(root&&own(root))root=root->parentWidget();
             if(root)root=root->window();

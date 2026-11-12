@@ -24,6 +24,8 @@ AIGuide/
 
 1.3.2 合并了 railgunhamster 的教程性能改动，在 Hammer 顶部加入 **AI Guide** 菜单，并支持团队引擎 `387a5b026` 的 Qt 模块。教程缓存当前目标、降低控件树扫描频率，并只更新发生变化的检查器属性。原生层加载失败时，编辑器状态和文件桥仍可使用，界面会报告加载失败原因。
 
+1.3.3 支持按步骤预填文件名和搜索框。保存仍需用户确认，已输入的文字会保留。
+
 ## 标准 Library
 
 `Sbox/.sbproj` 声明 `railgunhamster.aiguide` Library。项目使用 Verso Git 依赖，将本仓库 `Sbox/` 映射到 `Libraries/AIGuide/`，固定到锁文件指定的提交。
