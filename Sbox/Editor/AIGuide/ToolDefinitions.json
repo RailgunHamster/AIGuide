@@ -337,6 +337,19 @@
                 "type": "boolean",
                 "description": "Override the guide's mouse click restriction for this step."
               },
+              "skip_if": {
+                "type": "object",
+                "description": "Skip this step without clicking its target when this UI condition holds, such as an already visible panel."
+              },
+              "confirm_on_return": {
+                "type": "boolean",
+                "default": true,
+                "description": "Require manual confirmation when returning to this step. Set false to evaluate its completion condition again."
+              },
+              "target_when_disabled": {
+                "description": "Alternate control to highlight while the primary control is disabled.",
+                "anyOf": [{ "type": "string" }, { "type": "object" }]
+              },
               "allow": {
                 "type": "array",
                 "description": "Additional mouse targets for a restricted step. Control queries also allow their child widgets.",
@@ -348,7 +361,7 @@
                 }
               },
               "until": {
-                "description": "click (default), manual, or {any:[conditions]}, {all:[conditions]}, {not:condition}, {exists:target}, {visible:target}, {text_contains:{target,text}}, {text_equals:{target,text,committed:true}}, {number_equals:{target,value,committed:true}}, {tooltip_contains:{target,text}}, {key:\"Ctrl+S\"}, {selected:\"GUID|name\"}, {inspecting:\"GUID|name\"}, {main_screen:\"scene name|Hammer\"}, {context:{path:\"hammer.selection_mode\",equals:\"Faces\"}}, {file_saved:{path:\"Assets/example.vmat\",ext:\"vmat\",contains:\"text\"}}. Initially satisfied conditions and previous steps require click/next confirmation. File checks are bounded and throttled.",
+                "description": "click (default), manual, or {any:[conditions]}, {all:[conditions]}, {not:condition}, {exists:target}, {visible:target}, {enabled:target}, {text_contains:{target,text}}, {text_equals:{target,text,committed:true}}, {number_equals:{target,value,committed:true}}, {tooltip_contains:{target,text}}, {key:\"Ctrl+S\"}, {selected:\"GUID|name\"}, {inspecting:\"GUID|name\"}, {main_screen:\"scene name|Hammer\"}, {context:{path:\"hammer.selection_mode\",equals:\"Faces\"}}, {file_saved:{path:\"Assets/example.vmat\",ext:\"vmat\",contains:\"text\"}}. Initially satisfied completion conditions normally require confirmation. File checks are bounded and throttled.",
                 "anyOf": [
                   {
                     "type": "string"

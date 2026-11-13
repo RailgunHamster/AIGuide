@@ -192,13 +192,18 @@ public:
         targetError.clear();fallbackUsed=false;Element e;
         try{e=resolve(s["target"],true);}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}
         if(!e.w&&s.contains("fallback")){try{e=resolve(s["fallback"],true);fallbackUsed=bool(e.w);}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}}
+        if(e.w&&!e.w->isEnabled()&&s.contains("target_when_disabled")){
+            try{auto alternate=resolve(s["target_when_disabled"],true);if(alternate.w)e=alternate;}
+            catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}
+        }
         if(e.w)targetError.clear();else if(targetError.isEmpty())targetError="目标尚未出现";
         return e;
     }
     // Re-resolve a live cached target at most once a second, a missing one every 300 ms.
     Element targetFor(const QJsonObject&s,bool force=false){
         auto now=QDateTime::currentMSecsSinceEpoch();
-        bool fresh=cachedStep==step&&!force&&(cachedTarget.alive()?now-cachedAt<1000:now-cachedAt<300);
+        const auto cacheMs=s.contains("target_when_disabled")?250:1000;
+        bool fresh=cachedStep==step&&!force&&(cachedTarget.alive()?now-cachedAt<cacheMs:now-cachedAt<300);
         if(!fresh){MemoScope scope(this);cachedTarget=stepTarget(s);cachedError=targetError;cachedFallback=fallbackUsed;cachedScope=cachedTarget.w?cachedTarget.w->window():scopeWindow(s["target"]);cachedStep=step;cachedAt=now;}
         targetError=cachedError;fallbackUsed=cachedFallback;return cachedTarget;
     }
@@ -279,7 +284,8 @@ public:
     {
         const auto current=steps[step].toObject();
         MemoScope memoScope(this);
-        const auto target=targetFor(current,!cachedTarget.visible());
+        if(shouldSkip(current))return false;
+        const auto target=targetFor(current,!cachedTarget.visible()||current.contains("target_when_disabled"));
         if(!fallbackUsed&&clickInside(target,receiver,position))return true;
         for(const auto& rule:current["allow"].toArray())
         {
@@ -424,7 +430,13 @@ public:
         for(auto c:o["any"].toArray())if(condition(c))return true;
         if(o.contains("all")){auto conditions=o["all"].toArray();if(conditions.isEmpty())return false;for(auto c:conditions)if(!condition(c))return false;return true;}
         if(o.contains("not"))return !condition(o["not"]);
-        for(auto kind:{"exists","visible"})if(o.contains(kind)){auto e=resolve(o[kind],QString(kind)=="exists");return e.w&&(QString(kind)=="exists"||e.visible());}
+        for(QString kind:{"exists","visible","enabled"})if(o.contains(kind)){
+            const auto element=resolve(o[kind],kind=="exists");
+            if(!element.w)return false;
+            if(kind=="exists")return true;
+            if(!element.visible())return false;
+            return kind!="enabled"||(element.w->isEnabled()&&(!element.action||element.action->isEnabled()));
+        }
         for(QString kind:{"text_contains","text_equals","number_equals","tooltip_contains"})if(o.contains(kind)){
             const auto spec=o[kind].toObject();
             const auto element=resolve(spec["target"],true);
@@ -462,6 +474,11 @@ public:
         }
         return false;
     }
+    bool shouldSkip(const QJsonObject& current){
+        if(!current.contains("skip_if"))return false;
+        try{return condition(current["skip_if"]);}
+        catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());return false;}
+    }
     QString stepInput(const QJsonObject& s)
     {
         return s.contains("project_path") ? QDir::toNativeSeparators(projectFile(str(s,"project_path"))) : str(s,"clipboard");
@@ -480,7 +497,7 @@ public:
         field->insert(value);
         log({{"event","prefill"},{"index",step}});
     }
-    void enterStep(bool previous=false){invalidateTarget();MemoScope scope(this);dialogPolicy();entered=QDateTime::currentMSecsSinceEpoch();pendingClick=0;scrollTries=0;nextScroll=0;nextFileCheck=0;preSatisfied=false;manualConfirmation=previous;prefillDone=previous;presentedWindow=nullptr;activationSucceeded=false;currentElement={};targetError.clear();if(step<steps.size()){auto s=steps[step].toObject();try{preSatisfied=condition(s["until"]);}catch(...){}manualConfirmation=manualConfirmation||(preSatisfied&&!yes(s,"prefill"));if(s.contains("project_path")||s.contains("clipboard"))qApp->clipboard()->setText(stepInput(s));}log({{"event","step_enter"},{"index",step}});}
+    void enterStep(bool previous=false){invalidateTarget();MemoScope scope(this);dialogPolicy();entered=QDateTime::currentMSecsSinceEpoch();pendingClick=0;scrollTries=0;nextScroll=0;nextFileCheck=0;preSatisfied=false;manualConfirmation=false;prefillDone=previous;presentedWindow=nullptr;activationSucceeded=false;currentElement={};targetError.clear();if(step<steps.size()){auto s=steps[step].toObject();try{preSatisfied=condition(s["until"]);}catch(...){}manualConfirmation=(previous&&yes(s,"confirm_on_return",true))||(preSatisfied&&!yes(s,"prefill"));if(s.contains("project_path")||s.contains("clipboard"))qApp->clipboard()->setText(stepInput(s));}log({{"event","step_enter"},{"index",step}});}
     void advance(QString why){if(state!="running")return;log({{"event","advanced"},{"index",step},{"how",why}});step++;if(step>=steps.size()){state="completed";dialogPolicy();clearOverlays();if(bubble)bubble->hide();}else enterStep();}
     void clearOverlays(){for(auto o:overlays)if(o)o->hide();}
     void clear(){clearOverlays();if(bubble)bubble->hide();highlights={};highlightCache.clear();state="stopped";dialogPolicy();}
@@ -491,7 +508,12 @@ public:
     QJsonObject status(){return {{"state",state},{"title",title},{"index",step},{"step",step+1},{"total",steps.size()},{"steps",steps},{"log",events},{"waiting",state=="running"&&lastGuide["waiting"].toBool()},{"target",state=="running"&&currentElement.w?describe(currentElement):QJsonObject{}},{"target_error",targetError},{"fallback_used",fallbackUsed},{"pre_satisfied",preSatisfied},{"manual_confirmation",manualConfirmation},{"presented_window",presentedWindow?presentedWindow->windowTitle():QString()},{"activation_succeeded",activationSucceeded},{"restart_armed",restartArmed}};}
     QJsonObject control(QString action,bool human=false){
         if(action=="stop"){clear();return status();}if(action=="next")advance(human?"user_next":"agent_next");
-        else if(action=="prev"){step=qMax(0,step-1);state="running";enterStep(true);}
+        else if(action=="prev"){
+            MemoScope scope(this);
+            step=qMax(0,step-1);
+            while(step>0&&shouldSkip(steps[step].toObject()))--step;
+            state="running";enterStep(true);
+        }
         else if(action=="locate"){if(state=="running"&&step<steps.size()){auto s=steps[step].toObject();auto e=targetFor(s,true);present(e.w?e.w->window():cachedScope.data(),true);if(e.w)scrollIntoView(e);}return status();}
         else if(action=="restart"||action=="restart_clean"){if(human&&!restartArmed){restartArmed=true;log({{"event","restart_armed"}});}else {restartArmed=false;log({{"event","restart_requested"}});if(!human){step=0;state="running";enterStep();}}}
         else if(action=="do_step"){if(step>=steps.size())throw std::runtime_error("No current step");auto s=steps[step].toObject();auto a=s["action"].isObject()?s["action"].toObject():QJsonObject{{"action",str(s,"action","click")}};a["target"]=s["target"];act(a);advance("agent_did_step");}
@@ -509,11 +531,13 @@ public:
         }
         if(state=="running"&&step<steps.size()){
             auto now=QDateTime::currentMSecsSinceEpoch();if(pendingClick&&now-pendingClick>=120){advance("click");return;}
-            auto s=steps[step].toObject();auto e=targetFor(s);currentElement=e;present(e.w?e.w->window():cachedScope.data());
+            auto s=steps[step].toObject();
+            if(now>=nextCondition&&shouldSkip(s)){advance("skip");return;}
+            auto e=targetFor(s);currentElement=e;present(e.w?e.w->window():cachedScope.data());
             auto modal=qApp->activeModalWidget();bool blocked=e.w&&modal&&modal!=e.w->window()&&!modal->isAncestorOf(e.w);
             if(!blocked)prefill(s,e);
             // Conditions may walk the UI too; four checks a second are plenty for a human-paced tutorial.
-            if(!manualConfirmation&&now>=nextCondition){nextCondition=now+250;try{if(condition(s["until"])){advance("condition");return;}}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}}
+            if(now>=nextCondition){nextCondition=now+250;if(!manualConfirmation)try{if(condition(s["until"])){advance("condition");return;}}catch(const std::exception&ex){targetError=QString::fromUtf8(ex.what());}}
             if(e.w&&e.visible()&&!blocked){marks.append({e,QString::number(step+1)});root=e.w->window();lastGuide["waiting"]=false;}else{lastGuide["waiting"]=true;if(e.w&&!blocked&&yes(lastGuide,"auto_scroll",true)&&scrollTries<3&&now>=nextScroll){++scrollTries;nextScroll=now+300;scrollIntoView(e);}root=modal?modal:qApp->activeWindow();if(blocked){present(modal);marks.append({Element{modal},QString::number(step+1)});}}
             while(root&&own(root))root=root->parentWidget();
             if(root)root=root->window();

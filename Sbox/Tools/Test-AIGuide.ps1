@@ -218,6 +218,27 @@ try{
         Assert ((Tool guide_status).waiting) 'waiting flag';Tool guide_control @{action='next'};Act paste $edit.ref @{text='done'};Wait-Guide running 2
         Tool guide_control @{action='prev'};Assert ((Tool guide_status).index -eq 1) 'prev';Tool guide_control @{action='next'};Tool guide_control @{action='do_step'};Wait-Guide completed
     }
+    Test 'already visible panel skips menu steps and returned fields still require a commit' {
+        try {
+            Act paste $edit.ref @{text='0'}
+            Tool ui_guide @{steps=@(
+                @{target=$button.locator;text='打开面板';skip_if=@{visible=$edit.locator}},
+                @{target=$edit.locator;text='提交 2';confirm_on_return=$false;until=@{all=@(
+                    @{enabled=$edit.locator},@{number_equals=@{target=$edit.locator;value=2;committed=$true}}
+                )}},
+                @{target=$button.locator;text='完成';until='manual'}
+            )}
+            $state=Wait-Guide running 1
+            Assert (@($state.log|Where-Object {$_.event -eq 'advanced' -and $_.how -eq 'skip' -and $_.index -eq 0}).Count -gt 0) 'visible panel did not skip menu step'
+            Tool guide_control @{action='next'};Wait-Guide running 2
+            Tool guide_control @{action='prev'};Wait-Guide running 1
+            Native test_user_click @{target=$edit.ref}
+            Act paste $edit.ref @{text='2'};Start-Sleep -Milliseconds 300
+            Assert ((Tool guide_status).index -eq 1) 'returned field advanced without commit'
+            Act key $edit.ref @{keys='Enter'};Wait-Guide running 2
+        }
+        finally { Tool guide_control @{action='stop'} }
+    }
     Test 'key, any, selection, inspector and file-save conditions' {
         $id=Exec 'return Root.Children.First().Id.ToString();';$name=Exec 'return Root.Children.First().Name;';$scene=Exec 'return Root.Name;'
         Exec 'SceneEditorSession.Active.Selection.Clear();EditorUtility.InspectorObject=null;return true;'
